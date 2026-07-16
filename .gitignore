@@ -1,0 +1,44 @@
+# Photos and image exports
+*.webp
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.heif
+*.avif
+*.gif
+*.tif
+*.tiff
+*.bmp
+*.dng
+*.raw
+*.arw
+*.cr2
+*.cr3
+*.nef
+*.orf
+*.raf
+*.rw2
+
+# Branded application icon
+!/build/icon.png
+
+# Public documentation media
+!/docs/month-calendar-preview.jpg
+!/docs/screenshots/*.jpg
+
+# macOS metadata
+.DS_Store
+
+# Node.js dependencies and logs
+node_modules/
+/release/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Private archive content and local application state
+/content/
+/.local/
+/notes/

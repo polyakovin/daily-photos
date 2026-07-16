@@ -1,0 +1,90 @@
+{
+  "name": "photo-day-calendar",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Локальный календарь фотоархива",
+  "author": "Photo Day contributors",
+  "license": "MIT",
+  "homepage": "https://polyakovin.github.io/daily-photos/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/polyakovin/daily-photos.git"
+  },
+  "main": "src/electron/main.js",
+  "scripts": {
+    "start": "node src/server/index.js",
+    "desktop": "electron .",
+    "clean:release": "node -e \"require('node:fs').rmSync('release', { recursive: true, force: true })\"",
+    "dist": "npm run clean:release && electron-builder",
+    "dist:all": "npm run clean:release && electron-builder --mac && electron-builder --win",
+    "dist:mac": "npm run clean:release && electron-builder --mac",
+    "dist:win": "npm run clean:release && electron-builder --win",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/server/index.js && node --check src/server/photo-indexer.js && node --check src/renderer/life-range.js && node --check src/renderer/app.js && node --check docs/landing.js && node --check src/electron/main.js && node --check src/electron/preload.js && node --check src/electron/photo-search-roots.js && node --check src/electron/update-manager.js"
+  },
+  "devDependencies": {
+    "electron": "^37.2.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "ru.photoday.calendar",
+    "productName": "Фото дня",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "polyakovin",
+        "repo": "daily-photos",
+        "releaseType": "release"
+      }
+    ],
+    "files": [
+      "src/renderer/**/*",
+      "src/server/**/*",
+      "src/electron/**/*",
+      "package.json"
+    ],
+    "artifactName": "daily-photos-${version}-${os}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.photography",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Фото дня"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "exifr": "^7.1.3"
+  }
+}

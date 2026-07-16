@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#163a30" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+    <title>Фото дня — календарь</title>
+    <link rel="stylesheet" href="/styles.css?v=84" />
+  </head>
+  <body>
+    <main class="shell">
+      <div class="app-controls">
+        <button class="archive-settings-button electron-only" id="archiveSettingsButton" type="button" aria-label="Настройки источника фотографий">
+          <span class="archive-settings-icon" aria-hidden="true">⚙</span>
+          <span class="archive-settings-copy">
+            <small>Папка архива</small>
+            <strong id="archiveSettingsName">Не выбрана</strong>
+          </span>
+        </button>
+        <nav class="view-switcher" aria-label="Режим отображения">
+          <button class="view-switch is-active" type="button" data-view="calendar" aria-pressed="true">Календарь</button>
+          <button class="view-switch" type="button" data-view="timeline" aria-pressed="false">Таймлайн</button>
+          <button class="view-switch" type="button" data-view="life" aria-pressed="false">Жизнь</button>
+          <button class="view-switch" type="button" data-view="random" aria-pressed="false">Случайное</button>
+        </nav>
+        <button class="presentation-button" id="presentationButton" type="button" aria-pressed="false">
+          <i aria-hidden="true"></i>
+          <span>Презентация</span>
+        </button>
+      </div>
+
+      <section class="calendar-card view-panel" id="calendarView" aria-label="Календарь фотографий">
+        <div class="calendar-toolbar">
+          <div>
+            <p class="toolbar-kicker">Смотреть архив</p>
+            <h2 id="monthTitle">—</h2>
+          </div>
+          <div class="calendar-actions">
+            <div class="calendar-focus" role="group" aria-label="Масштаб календаря">
+              <button type="button" data-calendar-focus="years" aria-pressed="false">Годы</button>
+              <button type="button" data-calendar-focus="year" aria-pressed="false">Год</button>
+              <button class="is-active" type="button" data-calendar-focus="month" aria-pressed="true">Месяц</button>
+              <button type="button" data-calendar-focus="week" aria-pressed="false">Неделя</button>
+            </div>
+            <label class="year-select-label">
+              <span class="sr-only">Выбрать год</span>
+              <select id="yearSelect" aria-label="Выбрать год"></select>
+            </label>
+            <button class="today-button" id="todayButton" type="button">Сегодня</button>
+            <button class="round-button" id="previousMonth" type="button" aria-label="Предыдущий месяц">←</button>
+            <button class="round-button" id="nextMonth" type="button" aria-label="Следующий месяц">→</button>
+          </div>
+        </div>
+
+        <div class="weekdays" aria-hidden="true">
+          <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+
+        <div class="calendar-footer">
+          <span><i class="legend-dot"></i> Есть фотография</span>
+          <span class="sr-only" id="monthCount" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section class="timeline-card view-panel" id="timelineView" aria-label="Линейный таймлайн фотографий" hidden>
+        <div class="timeline-toolbar">
+          <div>
+            <p class="toolbar-kicker">Листать во времени</p>
+            <h2>Лента воспоминаний</h2>
+          </div>
+        </div>
+        <div class="timeline-wrap">
+          <div class="timeline-track" id="timelineTrack" tabindex="0" aria-label="Фотографии по времени"></div>
+          <div class="timeline-scrollbar-shell">
+            <input class="timeline-scrollbar" id="timelineScrollbar" type="range" min="0" max="100000" value="100000" aria-label="Положение таймлайна" />
+            <div class="timeline-years" id="timelineYears" aria-hidden="true"></div>
+          </div>
+        </div>
+        <div class="timeline-footer">
+          <span>← прошлое</span>
+          <span id="timelineHint">Колёсико, свайп или ползунок</span>
+          <span>будущее →</span>
+        </div>
+      </section>
+
+      <section class="life-card view-panel" id="lifeView" aria-label="Дни жизни" hidden>
+        <div class="life-toolbar">
+          <div class="life-heading">
+            <p class="toolbar-kicker">Один день — одна точка</p>
+            <h2 id="lifeAgeTitle">Моя жизнь</h2>
+          </div>
+          <div class="life-toolbar-actions">
+            <label class="life-remaining-toggle">
+              <span>Показать оставшуюся жизнь</span>
+              <input id="lifeRemainingToggle" type="checkbox" role="switch" />
+              <i aria-hidden="true"></i>
+            </label>
+            <div class="life-birth-date">
+              <label for="lifeBirthDate">Дата рождения</label>
+              <input
+                id="lifeBirthDate"
+                type="text"
+                inputmode="numeric"
+                autocomplete="bday"
+                maxlength="10"
+                placeholder="ДД.ММ.ГГГГ"
+                aria-describedby="lifeBirthDateStatus"
+              />
+              <small class="life-birth-date-status" id="lifeBirthDateStatus" aria-live="polite"></small>
+            </div>
+            <div class="life-summary" id="lifeSummary" aria-label="Прожито"></div>
+          </div>
+        </div>
+        <div class="life-canvas-wrap" id="lifeCanvasWrap">
+          <canvas id="lifeCanvas" role="img" aria-label="Карта дней жизни. Выделенные точки содержат фотографии."></canvas>
+          <div class="life-tooltip" id="lifeTooltip" role="tooltip" hidden>
+            <div class="life-tooltip-media" id="lifeTooltipMedia" hidden>
+              <img class="life-tooltip-preview" id="lifeTooltipPreview" alt="" decoding="async" />
+            </div>
+            <span class="life-tooltip-date" id="lifeTooltipDate"></span>
+          </div>
+        </div>
+        <div class="life-footer">
+          <div class="life-legend">
+            <span><i class="life-dot lived"></i> Прожитый день</span>
+            <span><i class="life-dot photo"></i> Есть фотография</span>
+            <span id="lifeFutureLegend" hidden><i class="life-dot future"></i> Будущий день</span>
+          </div>
+          <span id="lifeStats"></span>
+        </div>
+      </section>
+
+      <section class="random-card view-panel" id="randomView" aria-label="Слайд-шоу случайных фотографий" hidden>
+        <div class="random-toolbar">
+          <div>
+            <p class="toolbar-kicker">Личное слайд-шоу</p>
+            <h2>Презентация воспоминаний</h2>
+          </div>
+          <div class="random-actions">
+            <button class="random-control" id="randomToggle" type="button">Пауза</button>
+            <button class="round-button" id="randomNext" type="button" aria-label="Следующая случайная фотография">→</button>
+            <button class="round-button random-fullscreen-button" id="randomFullscreen" type="button" aria-label="Включить полноэкранный режим">⛶</button>
+          </div>
+        </div>
+        <div class="random-stage" id="randomStage" role="button" tabindex="0" aria-label="Открыть текущую фотографию">
+          <div class="random-layer" id="randomLayerA"><img alt="" /></div>
+          <div class="random-layer" id="randomLayerB"><img alt="" /></div>
+          <div class="random-vignette"></div>
+          <div class="random-loading" id="randomLoading">Ищем момент в архиве…</div>
+          <div class="random-caption" id="randomCaption">
+            <p id="randomWeekday"></p>
+            <h2 id="randomDate">—</h2>
+          </div>
+          <div class="random-progress"><i id="randomProgressBar"></i></div>
+        </div>
+        <div class="random-footer">
+          <span>Фотографии сменяются каждые 5 секунд</span>
+          <span>Нажмите, чтобы задержаться на воспоминании</span>
+        </div>
+      </section>
+
+      <footer class="app-author" aria-label="Об авторе">
+        <p>
+          <span>Автор</span>
+          <a class="app-author-name" href="https://polyakovin.ru" target="_blank" rel="noreferrer">Игорь Поляков</a>
+        </p>
+        <nav class="app-author-links" aria-label="Ссылки автора">
+          <a href="https://t.me/polyakovin" target="_blank" rel="noreferrer">Telegram</a>
+          <a href="https://github.com/polyakovin/daily-photos" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://boosty.to/polyakovin" target="_blank" rel="noreferrer">Boosty</a>
+        </nav>
+      </footer>
+    </main>
+
+    <aside class="background-operation-tooltip" id="backgroundOperationTooltip" role="status" aria-live="polite" aria-atomic="true" hidden>
+      <span class="background-operation-icon" aria-hidden="true"><i></i></span>
+      <div class="background-operation-copy">
+        <div class="background-operation-heading">
+          <strong id="backgroundOperationTitle">Фоновая операция</strong>
+          <span id="backgroundOperationAmount">0%</span>
+        </div>
+        <span class="background-operation-detail" id="backgroundOperationDetail"></span>
+        <div class="background-operation-progress" id="backgroundOperationProgress" role="progressbar" aria-label="Прогресс фоновой операции" aria-valuemin="0" aria-valuemax="100">
+          <i id="backgroundOperationProgressBar"></i>
+        </div>
+      </div>
+      <button class="background-operation-close" id="backgroundOperationClose" type="button" aria-label="Скрыть статус">×</button>
+    </aside>
+
+    <dialog class="archive-setup" id="archiveSetupDialog" aria-labelledby="archiveSetupTitle">
+      <div class="archive-setup-card">
+        <button class="archive-setup-close" id="archiveSetupClose" type="button" aria-label="Закрыть настройки">×</button>
+        <div class="archive-setup-mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64" role="img">
+            <path d="M11 20.5h16l5-6h21v34H11z"></path>
+            <circle cx="38" cy="33" r="8"></circle>
+            <path d="m18 43 8-9 7 6 5-4 8 7"></path>
+          </svg>
+        </div>
+        <p class="archive-setup-kicker" id="archiveSetupKicker">Первый запуск</p>
+        <h1 id="archiveSetupTitle">Где хранится ваша история?</h1>
+        <p class="archive-setup-lead" id="archiveSetupLead">Выберите папку или запустите автопоиск в Pictures и на подключённых носителях. «Фото дня» прочитает даты съёмки локально — файлы не отправляются в интернет.</p>
+
+        <div class="archive-source-options" aria-label="Где искать фотографии">
+          <button class="archive-source-option is-primary" id="archiveChooseButton" type="button">
+            <span class="archive-source-icon" aria-hidden="true">⌂</span>
+            <span>
+              <strong id="archiveChooseLabel">Выбрать папку</strong>
+              <small>Укажите любую папку с изображениями</small>
+            </span>
+            <i aria-hidden="true">→</i>
+          </button>
+          <button class="archive-source-option" id="archiveComputerButton" type="button">
+            <span class="archive-source-icon" aria-hidden="true">◎</span>
+            <span>
+              <strong>Найти автоматически</strong>
+              <small>Pictures и фотопапки подключённых носителей</small>
+            </span>
+            <i aria-hidden="true">→</i>
+          </button>
+        </div>
+
+        <div class="archive-folder-card">
+          <span class="archive-folder-icon" aria-hidden="true">⌂</span>
+          <div>
+            <small>Текущий источник</small>
+            <strong id="archiveSetupPath">Источник пока не выбран</strong>
+          </div>
+        </div>
+
+        <div class="archive-setup-hint">
+          <strong>Как определяется дата</strong>
+          <span>Сначала читается дата съёмки из EXIF/XMP. Если её нет, используется дата в пути (например, <code>2026-07-15.jpg</code>) или дата создания файла.</span>
+        </div>
+
+        <div class="archive-index-progress" id="archiveIndexProgress" role="status" aria-live="polite" hidden>
+          <div class="archive-index-heading">
+            <strong id="archiveIndexDetail">Ищем изображения…</strong>
+            <span id="archiveIndexAmount">0%</span>
+          </div>
+          <div class="archive-index-bar" role="progressbar" aria-label="Прогресс индексации" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="archiveIndexBar">
+            <i id="archiveIndexBarFill"></i>
+          </div>
+          <small id="archiveIndexEta">Оцениваем время завершения…</small>
+        </div>
+
+        <p class="archive-setup-error" id="archiveSetupError" role="alert" hidden></p>
+        <div class="archive-setup-actions">
+          <button class="archive-reveal-button" id="archiveRevealButton" type="button">Открыть папку</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="viewer" id="viewer">
+      <div class="viewer-backdrop" data-close></div>
+      <article class="viewer-panel">
+        <button class="viewer-close" type="button" data-close aria-label="Закрыть">×</button>
+        <div class="viewer-media">
+          <img id="viewerImage" alt="" />
+          <div class="image-loader" id="imageLoader">Проявляем снимок…</div>
+        </div>
+        <article class="viewer-diary" id="viewerDiary" hidden>
+          <div class="viewer-diary-label">Запись дня</div>
+          <div class="viewer-diary-content" id="viewerDiaryContent"></div>
+        </article>
+        <section class="viewer-alternatives" id="viewerAlternatives" aria-label="Варианты фотографии за эту дату" hidden>
+          <div class="viewer-alternatives-heading">
+            <strong>Варианты этого дня</strong>
+            <span id="viewerChoiceStatus" aria-live="polite"></span>
+          </div>
+          <div class="viewer-alternatives-track" id="viewerAlternativesTrack"></div>
+        </section>
+        <footer class="viewer-caption">
+          <div>
+            <p id="viewerWeekday"></p>
+            <h2 id="viewerDate"></h2>
+          </div>
+          <div class="viewer-actions">
+            <button
+              class="viewer-diary-toggle"
+              id="viewerDiaryToggle"
+              type="button"
+              aria-controls="viewerDiary"
+              aria-expanded="false"
+              hidden
+            >Показать запись</button>
+            <label class="viewer-blur-toggle">
+              <span>Блюрить в презентации</span>
+              <input id="viewerBlurToggle" type="checkbox" role="switch" />
+              <i aria-hidden="true"></i>
+            </label>
+            <span class="viewer-blur-status" id="viewerBlurStatus" aria-live="polite"></span>
+            <div class="viewer-nav">
+              <span id="photoPosition"></span>
+              <button id="previousPhoto" type="button" aria-label="Предыдущее фото">←</button>
+              <button id="nextPhoto" type="button" aria-label="Следующее фото">→</button>
+            </div>
+          </div>
+        </footer>
+      </article>
+    </dialog>
+
+    <script src="/life-range.js?v=1" defer></script>
+    <script src="/app.js?v=65" defer></script>
+  </body>
+</html>

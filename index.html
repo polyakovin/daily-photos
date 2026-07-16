@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f3efe5" />
+    <meta name="description" content="Фото дня — локальное приложение для просмотра личного фотоархива как календаря, таймлайна и карты жизни." />
+    <meta property="og:title" content="Фото дня — вся жизнь в фотографиях" />
+    <meta property="og:description" content="Выберите папку с фотографиями и смотрите свой архив как календарь, таймлайн или карту жизни." />
+    <meta property="og:image" content="https://polyakovin.github.io/daily-photos/docs/screenshots/calendar.jpg" />
+    <meta property="og:image:width" content="1440" />
+    <meta property="og:image:height" content="900" />
+    <meta property="og:image:alt" content="Календарь личного фотоархива в приложении «Фото дня»" />
+    <meta property="og:url" content="https://polyakovin.github.io/daily-photos/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:site_name" content="Фото дня" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Фото дня — вся жизнь в фотографиях" />
+    <meta name="twitter:description" content="Локальное приложение, которое превращает личный фотоархив в календарь воспоминаний." />
+    <meta name="twitter:image" content="https://polyakovin.github.io/daily-photos/docs/screenshots/calendar.jpg" />
+    <meta name="twitter:image:alt" content="Календарь личного фотоархива в приложении «Фото дня»" />
+    <title>Фото дня — личный фотоархив</title>
+    <base href="/daily-photos/" />
+    <link rel="canonical" href="https://polyakovin.github.io/daily-photos/" />
+    <link rel="icon" href="./docs/favicon.svg" type="image/svg+xml" sizes="any" />
+    <link rel="preload" href="./docs/screenshots/calendar.jpg" as="image" fetchpriority="high" />
+    <link rel="stylesheet" href="./docs/landing.css?v=5" />
+  </head>
+  <body>
+    <!-- Yandex.Metrika counter -->
+    <script type="text/javascript">
+      (function(m,e,t,r,i,k,a){
+        m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+        m[i].l=1*new Date();
+        for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+      })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=110791700', 'ym');
+
+      ym(110791700, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
+    </script>
+    <noscript><div><img src="https://mc.yandex.ru/watch/110791700" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+    <!-- /Yandex.Metrika counter -->
+
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Фото дня — на главную">
+        <img class="brand-mark" src="./docs/favicon.svg" alt="" aria-hidden="true" />
+        <span>Фото дня</span>
+      </a>
+
+      <nav class="header-nav" aria-label="Навигация по странице">
+        <a href="#about">О приложении</a>
+        <a href="#modes">Режимы</a>
+        <a href="https://github.com/polyakovin/daily-photos" target="_blank" rel="noreferrer" data-metrika-goal="open_github" data-metrika-placement="header-nav">GitHub</a>
+      </nav>
+
+      <a class="header-download" href="https://github.com/polyakovin/daily-photos/releases/latest" data-download data-metrika-goal="download_app" data-metrika-placement="header">
+        <span data-download-text>Скачать</span>
+        <span aria-hidden="true">↓</span>
+      </a>
+      <span class="header-mobile-availability" data-mobile-availability hidden>Только на компьютере</span>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><i></i> Личный архив без облака</p>
+          <h1 id="hero-title">Один день<br />Одна фотография<br /><em>Вся жизнь</em></h1>
+          <p class="hero-lead">«Фото дня» берёт снимки и записи из выбранной папки и превращает их в календарь воспоминаний. Всё хранится на вашем компьютере.</p>
+
+          <div class="hero-actions">
+            <a class="primary-button" href="https://github.com/polyakovin/daily-photos/releases/latest" data-download data-metrika-goal="download_app" data-metrika-placement="hero">
+              <span data-download-text>Скачать приложение</span>
+              <span aria-hidden="true">↓</span>
+            </a>
+            <a class="secondary-button" href="https://github.com/polyakovin/daily-photos" target="_blank" rel="noreferrer" data-metrika-goal="open_github" data-metrika-placement="hero">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.88c-2.78.61-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.54 1.03 1.54 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.58 9.58 0 0 1 12 6.82a9.6 9.6 0 0 1 2.5.34c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.86v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"></path>
+              </svg>
+              Открыть GitHub
+            </a>
+          </div>
+          <p class="cta-free-note"><span aria-hidden="true">✓</span> Полностью бесплатно · без подписки и скрытых платежей</p>
+          <p class="hero-mobile-availability" data-mobile-availability role="status" hidden>
+            <strong>Доступно только на компьютере</strong>
+            <span>Установите «Фото дня» на macOS или Windows.</span>
+          </p>
+
+          <div class="hero-facts" aria-label="Основные преимущества">
+            <span><i>01</i> macOS и Windows</span>
+            <span><i>02</i> Работает локально</span>
+            <span><i>03</i> <a class="source-link" href="https://github.com/polyakovin/daily-photos" target="_blank" rel="noreferrer" data-metrika-goal="open_github" data-metrika-placement="hero-benefit">Открытый код</a></span>
+          </div>
+        </div>
+
+        <div class="hero-visual" aria-label="Интерфейс календаря фотографий">
+          <div class="window window-hero">
+            <div class="window-bar">
+              <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span>Фото дня</span>
+              <span></span>
+            </div>
+            <img src="./docs/screenshots/calendar.jpg" alt="Настоящий интерфейс приложения: календарь с фотографиями на каждый день" fetchpriority="high" />
+          </div>
+        </div>
+      </section>
+
+      <section class="manifesto" id="about" aria-labelledby="about-title">
+        <p class="section-number">01 — О приложении</p>
+        <div class="manifesto-copy">
+          <h2 id="about-title">Не очередное облако<br /><em>Просто красивый способ помнить</em></h2>
+          <p>Вы сами выбираете папку, а приложение раскладывает фотографии и дневниковые записи по датам. Никакой регистрации, импорта в чужой сервис или подписки.</p>
+        </div>
+        <div class="principles">
+          <article>
+            <span class="principle-icon" aria-hidden="true">
+              <svg viewBox="0 0 64 64">
+                <path d="M9 20a4 4 0 0 1 4-4h12l5 5h21a4 4 0 0 1 4 4v23a4 4 0 0 1-4 4H13a4 4 0 0 1-4-4V20Z"></path>
+                <rect x="16" y="29" width="26" height="18" rx="3"></rect>
+                <circle class="accent-fill" cx="23" cy="35" r="2.5"></circle>
+                <path d="m19 43 7-7 6 6 4-4 5 5"></path>
+                <path class="accent" d="M43 36.5c4-1 7-3 7-3s3 2 7 3V42c0 6-7 9-7 9s-7-3-7-9v-5.5Z"></path>
+                <path class="accent" d="m47 42 2 2 4-4"></path>
+              </svg>
+            </span>
+            <h3>Ваши файлы остаются вашими</h3>
+            <p>Архив читается прямо с диска и не загружается в интернет.</p>
+          </article>
+          <article>
+            <span class="principle-icon" aria-hidden="true">
+              <svg viewBox="0 0 64 64">
+                <path d="M26 10h12M32 10v7M44.5 19.5l4-4M45.5 16.5l3 3"></path>
+                <circle cx="32" cy="36" r="19"></circle>
+                <path d="M32 17v4M32 51v4M13 36h4M47 36h4"></path>
+                <path class="accent" d="m35 23-10 15h8l-3 12 11-17h-8l2-10Z"></path>
+              </svg>
+            </span>
+            <h3>Открывается за секунду</h3>
+            <p>Выберите папку один раз — приложение запомнит её само.</p>
+          </article>
+          <article>
+            <span class="principle-icon" aria-hidden="true">
+              <svg viewBox="0 0 64 64">
+                <rect x="7" y="12" width="50" height="40" rx="7"></rect>
+                <path d="M7 23h50"></path>
+                <circle class="accent-fill" cx="15" cy="17.5" r="2"></circle>
+                <circle cx="22" cy="17.5" r="1.5"></circle>
+                <circle cx="28" cy="17.5" r="1.5"></circle>
+                <path d="m24 31-7 6 7 6M40 31l7 6-7 6"></path>
+                <path class="accent" d="m36 28-8 18"></path>
+              </svg>
+            </span>
+            <h3><a class="source-link" href="https://github.com/polyakovin/daily-photos" target="_blank" rel="noreferrer" data-metrika-goal="open_github" data-metrika-placement="principle-title">Открытый исходный код</a></h3>
+            <p>Проект доступен на <a class="source-link" href="https://github.com/polyakovin/daily-photos" target="_blank" rel="noreferrer" data-metrika-goal="open_github" data-metrika-placement="principle-copy">GitHub</a>: можно изучать, менять и дополнять.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="modes" id="modes" aria-labelledby="modes-title">
+        <div class="section-heading">
+          <p class="section-number">02 — Шесть взглядов</p>
+          <h2 id="modes-title">Смотрите на свой архив<br /><em>с разных расстояний</em></h2>
+        </div>
+
+        <article class="mode mode-calendar">
+          <div class="mode-copy">
+            <span class="mode-index">01</span>
+            <p class="mode-kicker">Месяц</p>
+            <h3>Каждый месяц — как фотоальбом</h3>
+            <p>Все дни месяца складываются в цельную историю. Фотографии и дневниковые записи всегда на виду.</p>
+          </div>
+          <div class="window mode-window">
+            <div class="window-bar compact">
+              <span class="window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span>Календарь</span>
+              <span></span>
+            </div>
+            <img src="./docs/screenshots/calendar.jpg" alt="Настоящий режим календаря с фотографиями по дням" loading="lazy" />
+          </div>
+        </article>
+
+        <div class="mode-pair">
+          <article class="mode mode-small">
+            <div class="mode-copy">
+              <span class="mode-index">02</span>
+              <p class="mode-kicker">Год</p>
+              <h3>Выберите главное фото каждого месяца</h3>
+            </div>
+            <div class="screen app-screen">
+              <img src="./docs/screenshots/year.jpg" alt="Годовой календарь с выбранной фотографией для каждого месяца" loading="lazy" />
+            </div>
+          </article>
+
+          <article class="mode mode-small mode-dark">
+            <div class="mode-copy">
+              <span class="mode-index">03</span>
+              <p class="mode-kicker">Неделя</p>
+              <h3>Семь дней — семь больших воспоминаний</h3>
+            </div>
+            <div class="screen app-screen">
+              <img src="./docs/screenshots/week.jpg" alt="Недельный календарь с семью крупными фотографиями" loading="lazy" />
+            </div>
+          </article>
+        </div>
+
+        <div class="mode-pair">
+          <article class="mode mode-small">
+            <div class="mode-copy">
+              <span class="mode-index">04</span>
+              <p class="mode-kicker">Таймлайн</p>
+              <h3>Листайте годы одним движением</h3>
+            </div>
+            <div class="screen app-screen">
+              <img src="./docs/screenshots/timeline.jpg" alt="Настоящий интерфейс горизонтального таймлайна" loading="lazy" />
+            </div>
+          </article>
+
+          <article class="mode mode-small mode-dark">
+            <div class="mode-copy">
+              <span class="mode-index">05</span>
+              <p class="mode-kicker">Жизнь</p>
+              <h3>Заметьте, где воспоминания становятся гуще</h3>
+            </div>
+            <div class="screen app-screen">
+              <img src="./docs/screenshots/life.jpg?v=2" alt="Карта прожитых дней с заполненными точками и фотографией в подсказке" loading="lazy" />
+            </div>
+          </article>
+        </div>
+
+        <article class="mode mode-random">
+          <div class="random-art app-screen random-screen">
+            <img src="./docs/screenshots/random.jpg" alt="Настоящий интерфейс презентации случайных воспоминаний" loading="lazy" />
+          </div>
+          <div class="mode-copy">
+            <span class="mode-index">06</span>
+            <p class="mode-kicker">Случайное · слайд-шоу</p>
+            <h3>Включите воспоминания — и немного поностальгируйте</h3>
+            <p>«Случайное» — это личный режим презентации: снимки мягко сменяют друг друга каждые пять секунд. Включите полный экран и позвольте архиву самому выбрать, куда вас вернуть.</p>
+          </div>
+        </article>
+
+        <p class="modes-credit">Демонстрационные фотографии — <a href="https://unsplash.com" target="_blank" rel="noreferrer">Unsplash</a></p>
+      </section>
+
+      <section class="download-section" aria-labelledby="download-title">
+        <div>
+          <p class="section-number">03 — Начать</p>
+          <h2 id="download-title">Ваша история<br />уже <em>на диске</em></h2>
+        </div>
+        <div class="download-copy">
+          <p>Установите приложение, выберите папку с архивом — и возвращайтесь к своим моментам в любое время.</p>
+          <div class="download-actions">
+            <a class="primary-button light" href="https://github.com/polyakovin/daily-photos/releases/latest" data-download data-metrika-goal="download_app" data-metrika-placement="final-cta">
+              <span data-download-text>Скачать последнюю версию</span>
+              <span aria-hidden="true">↓</span>
+            </a>
+            <div class="download-details">
+              <strong class="cta-free-note"><span aria-hidden="true">✓</span> Полностью бесплатно</strong>
+              <span id="downloadPlatformNote">Для macOS и Windows</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img class="brand-mark" src="./docs/favicon.svg" alt="" aria-hidden="true" />
+        <div><strong>Фото дня</strong><span>Личный архив воспоминаний</span></div>
+      </div>
+
+      <div class="footer-socials" aria-label="Контакты и ссылки">
+        <a class="social-link" href="https://polyakovin.ru" target="_blank" rel="noreferrer" aria-label="Сайт" title="Сайт">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c2.4 2.5 3.6 5.5 3.6 9S14.4 18.5 12 21M12 3C9.6 5.5 8.4 8.5 8.4 12S9.6 18.5 12 21"></path></svg>
+        </a>
+        <a class="social-link" href="mailto:web@polyakovin.ru" aria-label="Электронная почта" title="Электронная почта">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"></rect><path d="m4.5 7 7.5 6 7.5-6"></path></svg>
+        </a>
+        <a class="social-link social-telegram" href="https://t.me/polyakovin" target="_blank" rel="noreferrer" aria-label="Telegram" title="Telegram">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.4 3.5 18.6 20c-.2 1.2-.8 1.5-1.8.9l-4.3-3.2-2.1 2c-.2.2-.4.4-.9.4l.3-4.4 8-7.2c.3-.3-.1-.5-.5-.2l-9.9 6.2-4.2-1.3c-1.2-.4-1.2-1.2.3-1.8L20 3c1-.4 1.7.2 1.4.5Z"></path></svg>
+        </a>
+        <a class="social-link social-github" href="https://github.com/polyakovin/daily-photos" target="_blank" rel="noreferrer" aria-label="GitHub" title="GitHub" data-metrika-goal="open_github" data-metrika-placement="footer-social">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.88c-2.78.61-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.54 1.03 1.54 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.58 9.58 0 0 1 12 6.82a9.6 9.6 0 0 1 2.5.34c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.86v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"></path></svg>
+        </a>
+        <a class="social-link social-boosty" href="https://boosty.to/polyakovin" target="_blank" rel="noreferrer" aria-label="Boosty" title="Boosty">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.2 3h6.1l-1.5 5.2h3.4c3.2 0 4.8 1.7 4.1 4.4-1 3.8-4.1 8.4-10.1 8.4H3.3L9.2 3Zm.4 13.4h2.1c1.7 0 2.9-1 3.4-2.5.4-1.2-.3-1.8-1.8-1.8h-2.5l-1.2 4.3Z"></path></svg>
+        </a>
+      </div>
+
+      <p class="footer-note">Автор — Игорь Поляков · © 2026 · <a class="source-link" href="https://github.com/polyakovin/daily-photos" target="_blank" rel="noreferrer" data-metrika-goal="open_github" data-metrika-placement="footer-note">Исходный код</a> доступен по лицензии MIT</p>
+    </footer>
+    <script src="./docs/landing.js?v=3" defer></script>
+  </body>
+</html>
