@@ -13,6 +13,7 @@ let mainWindow = null;
 let photoDayServer = null;
 let archivePath = '';
 let sourceMode = 'folder';
+let convertImages = false;
 let birthDate = '';
 let lastUpdateCheckAt = 0;
 let updateManager = null;
@@ -39,6 +40,7 @@ function readSettings() {
     return {
       archivePath: typeof parsed.archivePath === 'string' ? parsed.archivePath : '',
       sourceMode: parsed.sourceMode === 'computer' ? 'computer' : 'folder',
+      convertImages: parsed.convertImages === true,
       birthDate: typeof parsed.birthDate === 'string' && isValidBirthDate(parsed.birthDate)
         ? parsed.birthDate
         : '',
@@ -47,7 +49,7 @@ function readSettings() {
         : 0
     };
   } catch {
-    return { archivePath: '', sourceMode: 'folder', birthDate: '', lastUpdateCheckAt: 0 };
+    return { archivePath: '', sourceMode: 'folder', convertImages: false, birthDate: '', lastUpdateCheckAt: 0 };
   }
 }
 
@@ -57,7 +59,7 @@ function writeSettings() {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(
     temporary,
-    `${JSON.stringify({ archivePath, sourceMode, birthDate, lastUpdateCheckAt }, null, 2)}\n`,
+    `${JSON.stringify({ archivePath, sourceMode, convertImages, birthDate, lastUpdateCheckAt }, null, 2)}\n`,
     'utf8'
   );
   fs.renameSync(temporary, target);
@@ -93,7 +95,9 @@ function archiveState({ canceled = false } = {}) {
     mode: sourceMode,
     path: isComputer ? 'Pictures и фотопапки подключённых носителей' : archivePath,
     name: isComputer ? 'Автопоиск' : archivePath ? path.basename(archivePath) || archivePath : '',
-    canReveal: !isComputer && available
+    canReveal: !isComputer && available,
+    canConvertImages: process.platform === 'darwin' && !isComputer && available,
+    convertImages: process.platform === 'darwin' && !isComputer && convertImages
   };
 }
 
@@ -108,21 +112,27 @@ async function chooseArchiveDirectory() {
 
   const previousArchivePath = archivePath;
   const previousSourceMode = sourceMode;
+  const previousConvertImages = convertImages;
   try {
-    archivePath = result.filePaths[0];
+    const nextArchivePath = result.filePaths[0];
+    const changedFolder = !archivePath || path.resolve(nextArchivePath) !== path.resolve(archivePath);
+    archivePath = nextArchivePath;
     sourceMode = 'folder';
+    if (changedFolder) convertImages = false;
     try {
       writeSettings();
     } catch (error) {
       archivePath = previousArchivePath;
       sourceMode = previousSourceMode;
+      convertImages = previousConvertImages;
       throw error;
     }
-    await photoDayServer.setContentSource({ mode: 'folder', roots: [archivePath] });
+    await photoDayServer.setContentSource({ mode: 'folder', roots: [archivePath], convertImages });
     return archiveState();
   } catch (error) {
     archivePath = previousArchivePath;
     sourceMode = previousSourceMode;
+    convertImages = previousConvertImages;
     try { writeSettings(); } catch {}
     await dialog.showMessageBox(mainWindow, {
       type: 'error',
@@ -137,9 +147,11 @@ async function chooseArchiveDirectory() {
 async function scanPhotoLocations() {
   const previousArchivePath = archivePath;
   const previousSourceMode = sourceMode;
+  const previousConvertImages = convertImages;
   try {
     archivePath = '';
     sourceMode = 'computer';
+    convertImages = false;
     writeSettings();
     const roots = photoSearchRoots();
     if (!roots.length) throw new Error('Не найдены доступные папки для автоматического поиска');
@@ -148,6 +160,7 @@ async function scanPhotoLocations() {
   } catch (error) {
     archivePath = previousArchivePath;
     sourceMode = previousSourceMode;
+    convertImages = previousConvertImages;
     try { writeSettings(); } catch {}
     await dialog.showMessageBox(mainWindow, {
       type: 'error',
@@ -159,10 +172,54 @@ async function scanPhotoLocations() {
   }
 }
 
+async function setArchiveConversion(enabled) {
+  if (typeof enabled !== 'boolean') throw new Error('Неверное значение настройки конвертации');
+  if (process.platform !== 'darwin') throw new Error('Конвертация из приложения пока доступна только на macOS');
+  if (sourceMode !== 'folder' || !directoryExists(archivePath)) {
+    throw new Error('Конвертация доступна только для выбранной папки');
+  }
+  if (enabled && !convertImages) {
+    const confirmation = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      title: 'Конвертировать и заменять оригиналы?',
+      message: 'Поддерживаемые изображения будут заменены файлами WebP.',
+      detail: 'Исходный JPG, PNG, GIF, AVIF, HEIC или HEIF удаляется только после создания и проверки WebP. Перед включением рекомендуется сделать резервную копию папки.',
+      buttons: ['Конвертировать и заменить', 'Отмена'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true
+    });
+    if (confirmation.response !== 0) return archiveState({ canceled: true });
+  }
+
+  const previousConvertImages = convertImages;
+  convertImages = enabled;
+  try {
+    writeSettings();
+    photoDayServer.setConvertImages(convertImages);
+  } catch (error) {
+    convertImages = previousConvertImages;
+    try {
+      writeSettings();
+      photoDayServer.setConvertImages(convertImages);
+    } catch {}
+    throw error;
+  }
+
+  if (convertImages) {
+    const converted = await photoDayServer.reindex();
+    if (!converted) {
+      return { ...archiveState(), error: 'Не удалось конвертировать все файлы. Проверьте сообщение об ошибке и наличие утилит WebP.' };
+    }
+  }
+  return archiveState();
+}
+
 function installIpcHandlers() {
   ipcMain.handle('archive:get-state', () => archiveState());
   ipcMain.handle('archive:choose-directory', chooseArchiveDirectory);
   ipcMain.handle('archive:scan-photo-locations', scanPhotoLocations);
+  ipcMain.handle('archive:set-convert-images', (_event, enabled) => setArchiveConversion(enabled));
   ipcMain.handle('archive:reveal-directory', async () => {
     if (sourceMode !== 'folder' || !directoryExists(archivePath)) return false;
     const error = await shell.openPath(archivePath);
@@ -274,6 +331,7 @@ async function startApplication() {
   const settings = readSettings();
   archivePath = settings.archivePath;
   sourceMode = settings.sourceMode;
+  convertImages = process.platform === 'darwin' && sourceMode === 'folder' && settings.convertImages;
   birthDate = settings.birthDate;
   lastUpdateCheckAt = settings.lastUpdateCheckAt;
   const emptyArchive = path.join(app.getPath('userData'), 'empty-archive');
@@ -287,7 +345,7 @@ async function startApplication() {
   photoDayServer = await startPhotoDayServer({
     contentRoot: initialArchive,
     stateRoot: app.getPath('userData'),
-    convertImages: false,
+    convertImages: configuredFolderAvailable && convertImages,
     metadataIndex: true,
     indexedPreviewGenerator,
     mode: sourceMode,
@@ -309,7 +367,7 @@ async function startApplication() {
   buildApplicationMenu();
   await createWindow();
   updateManager.start();
-  if (archiveState().available && !photoDayServer.hasCachedIndex) {
+  if (archiveState().available && (convertImages || !photoDayServer.hasCachedIndex)) {
     photoDayServer.reindex()
       .then(() => mainWindow?.webContents.reload())
       .catch((error) => {

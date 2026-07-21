@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#163a30" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Фото дня — календарь</title>
-    <link rel="stylesheet" href="/styles.css?v=84" />
+    <link rel="stylesheet" href="/styles.css?v=86" />
   </head>
   <body>
     <main class="shell">
@@ -230,6 +230,15 @@
           </div>
         </div>
 
+        <label class="archive-convert-setting" id="archiveConvertSetting">
+          <input id="archiveConvertToggle" type="checkbox" role="switch" />
+          <i aria-hidden="true"></i>
+          <span>
+            <strong>Конвертировать и заменять оригиналы</strong>
+            <small>JPG, PNG, GIF, AVIF, HEIC и HEIF будут заменяться проверенными файлами WebP в выбранной папке.</small>
+          </span>
+        </label>
+
         <div class="archive-setup-hint">
           <strong>Как определяется дата</strong>
           <span>Сначала читается дата съёмки из EXIF/XMP. Если её нет, используется дата в пути (например, <code>2026-07-15.jpg</code>) или дата создания файла.</span>
@@ -286,6 +295,15 @@
               aria-expanded="false"
               hidden
             >Показать запись</button>
+            <div class="viewer-highlight-actions" id="viewerHighlightActions" aria-label="Лучшие фотографии периода">
+              <button class="viewer-highlight-button" id="viewerMonthHighlight" type="button" aria-pressed="false">
+                <span aria-hidden="true">☆</span> Фото месяца
+              </button>
+              <button class="viewer-highlight-button" id="viewerYearHighlight" type="button" aria-pressed="false">
+                <span aria-hidden="true">☆</span> Фото года
+              </button>
+            </div>
+            <span class="viewer-highlight-status" id="viewerHighlightStatus" aria-live="polite"></span>
             <label class="viewer-blur-toggle">
               <span>Блюрить в презентации</span>
               <input id="viewerBlurToggle" type="checkbox" role="switch" />
@@ -303,6 +321,6 @@
     </dialog>
 
     <script src="/life-range.js?v=1" defer></script>
-    <script src="/app.js?v=65" defer></script>
+    <script src="/app.js?v=67" defer></script>
   </body>
 </html>

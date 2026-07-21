@@ -1,7 +1,7 @@
 {
   "name": "photo-day-calendar",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Локальный календарь фотоархива",
   "author": "Photo Day contributors",
   "license": "MIT",
@@ -45,7 +45,11 @@
       "src/renderer/**/*",
       "src/server/**/*",
       "src/electron/**/*",
+      "scripts/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "scripts/**/*"
     ],
     "artifactName": "daily-photos-${version}-${os}-${arch}.${ext}",
     "mac": {

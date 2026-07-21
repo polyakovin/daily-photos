@@ -5,7 +5,7 @@ set -u
 usage() {
   cat <<'EOF'
 Использование:
-  ./scripts/images-to-webp.sh [--quality 1-100] [--overwrite] [--delete-source] <файл|папка>
+  ./scripts/images-to-webp.sh [--quality 1-100] [--overwrite] [--delete-source] [--skip-previews] <файл|папка>
 
 Примеры:
   ./scripts/images-to-webp.sh ./content/photo.jpg
@@ -16,6 +16,7 @@ usage() {
 Поддерживаются JPG, JPEG, PNG, GIF, AVIF, HEIC и HEIF. Поиск в папке рекурсивный.
 Исходники удаляются только с --delete-source и только после проверки WebP.
 Уже существующие WebP не перекодируются.
+С --skip-previews локальные превью не создаются — этот режим используется десктопным приложением.
 
 Зависимости (macOS): brew install webp ffmpeg libheif exiftool
 EOF
@@ -24,6 +25,7 @@ EOF
 quality=85
 overwrite=0
 delete_source=0
+skip_previews=0
 target=""
 
 while (($#)); do
@@ -42,6 +44,10 @@ while (($#)); do
       ;;
     --delete-source)
       delete_source=1
+      shift
+      ;;
+    --skip-previews)
+      skip_previews=1
       shift
       ;;
     -h|--help)
@@ -331,15 +337,17 @@ if ((delete_source && delete_count > 0 && failed == 0)); then
   fi
 fi
 
-preview_script="$(cd "$(dirname "$0")" && pwd -P)/generate-photo-previews.sh"
-if [[ -x "$preview_script" && -n "$preview_target" ]]; then
-  if ! "$preview_script" "$preview_target"; then
-    echo "Ошибка: не удалось обновить превью." >&2
+if ((skip_previews == 0)); then
+  preview_script="$(cd "$(dirname "$0")" && pwd -P)/generate-photo-previews.sh"
+  if [[ -x "$preview_script" && -n "$preview_target" ]]; then
+    if ! "$preview_script" "$preview_target"; then
+      echo "Ошибка: не удалось обновить превью." >&2
+      ((failed += 1))
+    fi
+  else
+    echo "Ошибка: не найден исполняемый generate-photo-previews.sh." >&2
     ((failed += 1))
   fi
-else
-  echo "Ошибка: не найден исполняемый generate-photo-previews.sh." >&2
-  ((failed += 1))
 fi
 
 printf 'Итог: создано %d, пропущено %d, удалено исходников %d, ошибок %d.\n' \

@@ -7,7 +7,12 @@ const { indexPhotoRoots } = require('./photo-indexer');
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const RENDERER_ROOT = path.join(PROJECT_ROOT, 'src', 'renderer');
-const SCRIPTS_ROOT = path.join(PROJECT_ROOT, 'scripts');
+const PACKAGED_SCRIPTS_ROOT = process.resourcesPath
+  ? path.join(process.resourcesPath, 'app.asar.unpacked', 'scripts')
+  : '';
+const SCRIPTS_ROOT = PACKAGED_SCRIPTS_ROOT && fs.existsSync(PACKAGED_SCRIPTS_ROOT)
+  ? PACKAGED_SCRIPTS_ROOT
+  : path.join(PROJECT_ROOT, 'scripts');
 let CONTENT_ROOT = path.resolve(process.env.PHOTO_DAY_CONTENT_ROOT || path.join(PROJECT_ROOT, 'content'));
 let DIARY_ROOT = path.join(CONTENT_ROOT, '_diary');
 let STATE_ROOT = path.resolve(process.env.PHOTO_DAY_STATE_ROOT || path.join(PROJECT_ROOT, '.local'));
@@ -17,6 +22,7 @@ let INDEXED_PREVIEW_ROOT = path.join(STATE_ROOT, 'cache', 'photo-previews');
 let BLUR_DATES_FILE = path.join(STATE_ROOT, 'presentation_blur_dates.json');
 let INDEX_CACHE_FILE = path.join(STATE_ROOT, 'photo-index.json');
 let PHOTO_SELECTIONS_FILE = path.join(STATE_ROOT, 'daily_photo_selections.json');
+let HIGHLIGHT_SELECTIONS_FILE = path.join(STATE_ROOT, 'period_photo_selections.json');
 const SERVER_VERSION = String(Math.trunc(fs.statSync(__filename).mtimeMs / 1000));
 const PORT = Number(process.env.PORT || 4173);
 const IMAGE_RE = /\.(?:jpe?g|png|webp|gif|avif)$/i;
@@ -43,6 +49,7 @@ let hasLoadedIndexCache = false;
 const indexedPhotoFiles = new Map();
 const indexedPreviewJobs = new Map();
 let photoSelections = new Map();
+let highlightSelections = { years: new Map(), months: new Map() };
 
 function configurePaths({
   contentRoot,
@@ -65,9 +72,16 @@ function configurePaths({
   TMP_ROOT = path.join(STATE_ROOT, 'tmp');
   PREVIEW_ROOT = path.join(TMP_ROOT, 'previews');
   INDEXED_PREVIEW_ROOT = path.join(STATE_ROOT, 'cache', 'photo-previews');
-  BLUR_DATES_FILE = path.join(STATE_ROOT, 'presentation_blur_dates.json');
+  BLUR_DATES_FILE = path.join(
+    sourceMode === 'folder' ? CONTENT_ROOT : STATE_ROOT,
+    'presentation_blur_dates.json'
+  );
   INDEX_CACHE_FILE = path.join(STATE_ROOT, 'photo-index.json');
   PHOTO_SELECTIONS_FILE = path.join(STATE_ROOT, 'daily_photo_selections.json');
+  HIGHLIGHT_SELECTIONS_FILE = path.join(
+    sourceMode === 'folder' ? CONTENT_ROOT : STATE_ROOT,
+    'period_photo_selections.json'
+  );
 }
 
 function isValidDateKey(value) {
@@ -123,6 +137,40 @@ function writePhotoSelections() {
   const temporaryFile = `${PHOTO_SELECTIONS_FILE}.tmp`;
   fs.writeFileSync(temporaryFile, `${JSON.stringify(serializedPhotoSelections(), null, 2)}\n`, 'utf8');
   fs.renameSync(temporaryFile, PHOTO_SELECTIONS_FILE);
+}
+
+function readHighlightSelections() {
+  try {
+    const values = JSON.parse(fs.readFileSync(HIGHLIGHT_SELECTIONS_FILE, 'utf8'));
+    if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error('ожидался объект');
+    const years = Object.entries(values.years || {}).filter(([year, photoId]) => (
+      /^(?:19|20)\d{2}$/.test(year) && typeof photoId === 'string' && /^[a-f0-9]{32}$/.test(photoId)
+    ));
+    const months = Object.entries(values.months || {}).filter(([month, photoId]) => (
+      /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/.test(month)
+      && typeof photoId === 'string'
+      && /^[a-f0-9]{32}$/.test(photoId)
+    ));
+    return { years: new Map(years), months: new Map(months) };
+  } catch (error) {
+    if (error.code === 'ENOENT') return { years: new Map(), months: new Map() };
+    console.error(`Не удалось прочитать ${path.basename(HIGHLIGHT_SELECTIONS_FILE)}: ${error.message}`);
+    return { years: new Map(), months: new Map() };
+  }
+}
+
+function serializedHighlightSelections() {
+  const sortedEntries = (values) => [...values.entries()].sort(([a], [b]) => a.localeCompare(b));
+  return {
+    years: Object.fromEntries(sortedEntries(highlightSelections.years)),
+    months: Object.fromEntries(sortedEntries(highlightSelections.months))
+  };
+}
+
+function writeHighlightSelections() {
+  const temporaryFile = `${HIGHLIGHT_SELECTIONS_FILE}.tmp`;
+  fs.writeFileSync(temporaryFile, `${JSON.stringify(serializedHighlightSelections(), null, 2)}\n`, 'utf8');
+  fs.renameSync(temporaryFile, HIGHLIGHT_SELECTIONS_FILE);
 }
 
 function sendJson(response, status, value) {
@@ -190,8 +238,93 @@ function streamChildOutput(stream, destination, onLine = null) {
   });
 }
 
+function convertibleImageKind(fileName) {
+  const match = fileName.match(/\.(jpe?g|png|gif|avif|heic|heif)$/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function conversionDestination(filePath) {
+  const kind = convertibleImageKind(filePath);
+  if (!kind) return null;
+  const directory = path.dirname(filePath);
+  const stem = path.basename(filePath, path.extname(filePath));
+  let variants = 0;
+  try {
+    for (const name of fs.readdirSync(directory)) {
+      if (name.startsWith(`${stem}.`) && convertibleImageKind(name)) variants += 1;
+    }
+  } catch {
+    return null;
+  }
+  return path.join(directory, variants > 1 ? `${stem}.${kind}.webp` : `${stem}.webp`);
+}
+
+function pendingSelectionIdReplacements() {
+  const selectedIds = new Set([
+    ...photoSelections.values(),
+    ...highlightSelections.years.values(),
+    ...highlightSelections.months.values()
+  ]);
+  const replacements = new Map();
+  if (!selectedIds.size || sourceMode !== 'folder') return replacements;
+
+  function walk(directory) {
+    let entries;
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) walk(absolutePath);
+      else if (entry.isFile() && convertibleImageKind(entry.name)) {
+        const oldId = indexedPhotoId(absolutePath);
+        if (selectedIds.has(oldId)) replacements.set(oldId, conversionDestination(absolutePath));
+      }
+    }
+  }
+  walk(CONTENT_ROOT);
+  return replacements;
+}
+
+function migrateSelectionIds(replacements) {
+  const resolved = new Map();
+  for (const [oldId, destination] of replacements) {
+    if (destination && fs.existsSync(destination)) resolved.set(oldId, indexedPhotoId(destination));
+  }
+  if (!resolved.size) return true;
+
+  let photoSelectionsChanged = false;
+  for (const [date, photoId] of photoSelections) {
+    const replacement = resolved.get(photoId);
+    if (!replacement) continue;
+    photoSelections.set(date, replacement);
+    photoSelectionsChanged = true;
+  }
+  let highlightSelectionsChanged = false;
+  for (const selections of [highlightSelections.years, highlightSelections.months]) {
+    for (const [period, photoId] of selections) {
+      const replacement = resolved.get(photoId);
+      if (!replacement) continue;
+      selections.set(period, replacement);
+      highlightSelectionsChanged = true;
+    }
+  }
+
+  try {
+    if (photoSelectionsChanged) writePhotoSelections();
+    if (highlightSelectionsChanged) writeHighlightSelections();
+    return true;
+  } catch (error) {
+    console.error(`Не удалось обновить сохранённый выбор после конвертации: ${error.message}`);
+    return false;
+  }
+}
+
 function convertNewImages(onProgress = null) {
-  if (!shouldConvertImages) return Promise.resolve(true);
+  if (!shouldConvertImages || sourceMode !== 'folder') return Promise.resolve(true);
   const script = path.join(SCRIPTS_ROOT, 'images-to-webp.sh');
   const pathValue = [
     '/opt/homebrew/bin',
@@ -201,8 +334,11 @@ function convertNewImages(onProgress = null) {
 
   console.log('Поиск новых изображений...');
   return new Promise((resolve) => {
-    const child = spawn('/bin/bash', [script, '--delete-source', CONTENT_ROOT], {
-      cwd: PROJECT_ROOT,
+    const scriptArguments = [script, '--delete-source'];
+    if (shouldIndexMetadata) scriptArguments.push('--skip-previews');
+    scriptArguments.push(CONTENT_ROOT);
+    const child = spawn('/bin/bash', scriptArguments, {
+      cwd: CONTENT_ROOT,
       env: { ...process.env, PATH: pathValue },
       stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -230,6 +366,30 @@ function convertNewImages(onProgress = null) {
       resolve(code === 0);
     });
   });
+}
+
+async function convertImagesForOperation(operationId) {
+  if (!shouldConvertImages || sourceMode !== 'folder') return true;
+  const selectionIdReplacements = pendingSelectionIdReplacements();
+  updateOperation(operationId, {
+    title: 'Конвертируем фотографии',
+    detail: 'Ищем файлы для замены на WebP',
+    progress: 5,
+    completed: null,
+    total: null,
+    unit: 'фото',
+    etaSeconds: null
+  });
+  const converted = await convertNewImages(({ phase, completed, total, progress }) => {
+    updateOperation(operationId, {
+      detail: phase === 'conversion' ? 'Конвертируем и проверяем снимки' : 'Создаём превью',
+      progress,
+      completed,
+      total,
+      unit: 'фото'
+    });
+  });
+  return converted && migrateSelectionIds(selectionIdReplacements);
 }
 
 function dateFromPath(relativePath) {
@@ -307,6 +467,7 @@ function buildIndexedHighlights(indexedPhotos) {
     const month = Number(photo.date.slice(5, 7));
     if (!years.has(year)) {
       years.set(year, {
+        id: photo.id,
         year,
         date: photo.date,
         src: photo.src,
@@ -316,6 +477,7 @@ function buildIndexedHighlights(indexedPhotos) {
     const monthKey = `${year}-${month}`;
     if (!months.has(monthKey)) {
       months.set(monthKey, {
+        id: photo.id,
         year,
         month,
         date: photo.date,
@@ -347,7 +509,8 @@ function installIndexedRecords(records) {
         : source
     };
   });
-  highlights = buildIndexedHighlights(photos);
+  defaultHighlights = buildIndexedHighlights(photos);
+  highlights = mergeHighlightSelections(defaultHighlights);
 }
 
 function writeIndexCache(records) {
@@ -541,6 +704,7 @@ function scanHighlights() {
 }
 
 let photos = [];
+let defaultHighlights = { years: [], months: [] };
 let highlights = { years: [], months: [] };
 let diary = [];
 let blurDates = new Set();
@@ -549,6 +713,42 @@ let archiveRefreshRunning = false;
 
 function archiveSignature(nextPhotos, nextHighlights, nextDiary) {
   return JSON.stringify([nextPhotos, nextHighlights, nextDiary]);
+}
+
+function highlightFromPhoto(photo) {
+  return {
+    id: photo.id,
+    year: Number(photo.date.slice(0, 4)),
+    month: Number(photo.date.slice(5, 7)),
+    date: photo.date,
+    src: photo.src,
+    thumbnailSrc: photo.thumbnailSrc || photo.src
+  };
+}
+
+function mergeHighlightSelections(baseHighlights = defaultHighlights) {
+  const years = new Map((baseHighlights.years || []).map((item) => [String(item.year), item]));
+  const months = new Map((baseHighlights.months || []).map((item) => (
+    [`${item.year}-${String(item.month).padStart(2, '0')}`, item]
+  )));
+
+  for (const [year, photoId] of highlightSelections.years) {
+    const photo = photos.find((candidate) => candidate.id === photoId && candidate.date.startsWith(`${year}-`));
+    if (photo) years.set(year, highlightFromPhoto(photo));
+  }
+  for (const [month, photoId] of highlightSelections.months) {
+    const photo = photos.find((candidate) => candidate.id === photoId && candidate.date.startsWith(`${month}-`));
+    if (photo) months.set(month, highlightFromPhoto(photo));
+  }
+
+  return {
+    years: [...years.values()].sort((a, b) => a.year - b.year),
+    months: [...months.values()].sort((a, b) => a.year - b.year || a.month - b.month)
+  };
+}
+
+function highlightSelectionState() {
+  return { selections: serializedHighlightSelections(), highlights };
 }
 
 function notifyArchiveUpdated() {
@@ -568,6 +768,11 @@ async function refreshArchive(operationId = null) {
 
   try {
     if (shouldIndexMetadata) {
+      if (!await convertImagesForOperation(currentOperationId)) {
+        const message = 'Не удалось конвертировать все снимки; непроверенные оригиналы сохранены';
+        finishOperation(currentOperationId, '', message);
+        return false;
+      }
       updateOperation(currentOperationId, {
         title: sourceMode === 'computer' ? 'Ищем фотографии автоматически' : 'Индексируем папку',
         detail: 'Готовим поиск изображений',
@@ -584,7 +789,7 @@ async function refreshArchive(operationId = null) {
         `Готово: ${photos.length.toLocaleString('ru-RU')} фото по датам съёмки`
       );
       if (archiveChanged) notifyArchiveUpdated();
-      return;
+      return true;
     }
 
     updateOperation(currentOperationId, {
@@ -593,19 +798,12 @@ async function refreshArchive(operationId = null) {
       completed: null,
       total: null
     });
-    const converted = await convertNewImages(({ phase, completed, total, progress }) => {
-      updateOperation(currentOperationId, {
-        detail: phase === 'conversion' ? 'Конвертируем снимки' : 'Создаём превью',
-        progress,
-        completed,
-        total
-      });
-    });
+    const converted = await convertImagesForOperation(currentOperationId);
     if (!converted) {
       const message = 'Не удалось обработать новые снимки';
       console.error('Архив не обновлён: исходники сохранены для повторной попытки.');
       finishOperation(currentOperationId, '', message);
-      return;
+      return false;
     }
 
     updateOperation(currentOperationId, {
@@ -619,10 +817,11 @@ async function refreshArchive(operationId = null) {
     const nextHighlights = scanHighlights();
     const nextDiary = scanDiary();
     photos = nextPhotos;
-    highlights = nextHighlights;
+    defaultHighlights = nextHighlights;
+    highlights = mergeHighlightSelections(defaultHighlights);
     diary = nextDiary;
 
-    const archiveChanged = archiveSignature(nextPhotos, nextHighlights, nextDiary) !== previousSignature;
+    const archiveChanged = archiveSignature(photos, highlights, diary) !== previousSignature;
     finishOperation(
       currentOperationId,
       archiveChanged
@@ -633,9 +832,11 @@ async function refreshArchive(operationId = null) {
       console.log(`Архив обновлён. Фотографий: ${photos.length}, записей: ${diary.length}`);
       notifyArchiveUpdated();
     }
+    return true;
   } catch (error) {
     console.error(`Не удалось обновить архив: ${error.message}`);
     finishOperation(currentOperationId, '', `Ошибка обновления: ${error.message}`);
+    return false;
   } finally {
     archiveRefreshRunning = false;
   }
@@ -679,16 +880,17 @@ function loadArchive({ notify = false } = {}) {
   const nextHighlights = scanHighlights();
   const nextDiary = scanDiary();
   photos = nextPhotos;
-  highlights = nextHighlights;
+  defaultHighlights = nextHighlights;
+  highlights = mergeHighlightSelections(defaultHighlights);
   diary = nextDiary;
-  const changed = archiveSignature(nextPhotos, nextHighlights, nextDiary) !== previousSignature;
+  const changed = archiveSignature(photos, highlights, diary) !== previousSignature;
   if (notify && changed) {
     notifyArchiveUpdated();
   }
   return changed;
 }
 
-async function switchContentSource({ mode = 'folder', roots = [] } = {}) {
+async function switchContentSource({ mode = 'folder', roots = [], convertImages = false } = {}) {
   if (!['folder', 'computer'].includes(mode)) throw new Error('Неизвестный режим поиска');
   const absoluteRoots = [...new Set(roots.map((root) => path.resolve(root)))];
   if (!absoluteRoots.length) throw new Error('Не указано, где искать фотографии');
@@ -707,7 +909,11 @@ async function switchContentSource({ mode = 'folder', roots = [] } = {}) {
     sourceMode,
     sourceRoots: [...sourceRoots],
     photos,
+    defaultHighlights,
     highlights,
+    highlightSelections,
+    blurDates,
+    shouldConvertImages,
     diary,
     indexedPhotoFiles: new Map(indexedPhotoFiles)
   };
@@ -720,20 +926,18 @@ async function switchContentSource({ mode = 'folder', roots = [] } = {}) {
       mode,
       roots: absoluteRoots
     });
+    shouldConvertImages = mode === 'folder' && Boolean(convertImages);
+    highlightSelections = readHighlightSelections();
+    blurDates = readBlurDates();
     const previousSignature = archiveSignature(photos, highlights, diary);
     if (shouldIndexMetadata) {
+      if (!await convertImagesForOperation(operationId)) {
+        throw new Error('Не удалось конвертировать все снимки; непроверенные оригиналы сохранены');
+      }
       await indexMetadataPhotos(operationId);
     } else {
       updateOperation(operationId, { detail: 'Читаем содержимое папки', progress: 38 });
-      if (!await convertNewImages(({ phase, completed, total, progress }) => {
-        updateOperation(operationId, {
-          detail: phase === 'conversion' ? 'Конвертируем снимки' : 'Создаём превью',
-          progress,
-          completed,
-          total,
-          unit: 'фото'
-        });
-      })) throw new Error('Не удалось обработать новые изображения');
+      if (!await convertImagesForOperation(operationId)) throw new Error('Не удалось обработать новые изображения');
       updateOperation(operationId, { detail: 'Собираем календарь', progress: 86, completed: null, total: null });
       await new Promise((resolve) => setImmediate(resolve));
       loadArchive();
@@ -752,7 +956,11 @@ async function switchContentSource({ mode = 'folder', roots = [] } = {}) {
       roots: previousState.sourceRoots
     });
     photos = previousState.photos;
+    defaultHighlights = previousState.defaultHighlights;
     highlights = previousState.highlights;
+    highlightSelections = previousState.highlightSelections;
+    blurDates = previousState.blurDates;
+    shouldConvertImages = previousState.shouldConvertImages;
     diary = previousState.diary;
     indexedPhotoFiles.clear();
     for (const [id, filePath] of previousState.indexedPhotoFiles) indexedPhotoFiles.set(id, filePath);
@@ -770,7 +978,15 @@ async function switchContentSource({ mode = 'folder', roots = [] } = {}) {
 }
 
 function switchArchiveRoot(nextRoot) {
-  return switchContentSource({ mode: 'folder', roots: [nextRoot] });
+  return switchContentSource({ mode: 'folder', roots: [nextRoot], convertImages: shouldConvertImages });
+}
+
+function setConvertImages(enabled) {
+  if (enabled && sourceMode !== 'folder') {
+    throw new Error('Конвертация доступна только для выбранной папки');
+  }
+  shouldConvertImages = Boolean(enabled) && sourceMode === 'folder';
+  return shouldConvertImages;
 }
 
 function sendFile(response, filePath, { cacheControl = 'no-cache' } = {}) {
@@ -885,6 +1101,78 @@ function handleRequest(request, response) {
 
   if (requestUrl.pathname === '/api/highlights') {
     sendJson(response, 200, highlights);
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/highlight-selections' && request.method === 'GET') {
+    sendJson(response, 200, serializedHighlightSelections());
+    return;
+  }
+
+  const highlightSelectionMatch = requestUrl.pathname.match(
+    /^\/api\/highlight-selections\/(year|month)\/((?:19|20)\d{2}(?:-(?:0[1-9]|1[0-2]))?)$/
+  );
+  if (highlightSelectionMatch && request.method === 'PUT') {
+    const [, scope, period] = highlightSelectionMatch;
+    const isMonth = scope === 'month';
+    if ((isMonth && period.length !== 7) || (!isMonth && period.length !== 4)) {
+      sendJson(response, 400, { error: 'Период не соответствует типу отметки' });
+      return;
+    }
+
+    let body = '';
+    let bodyTooLarge = false;
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      if (bodyTooLarge) return;
+      body += chunk;
+      if (body.length > 1024) bodyTooLarge = true;
+    });
+    request.on('end', () => {
+      if (bodyTooLarge) {
+        sendJson(response, 413, { error: 'Слишком большой запрос' });
+        return;
+      }
+      let photoId;
+      try {
+        photoId = JSON.parse(body).photoId;
+      } catch {
+        sendJson(response, 400, { error: 'Неверный JSON' });
+        return;
+      }
+      if (photoId !== null && (typeof photoId !== 'string' || !/^[a-f0-9]{32}$/.test(photoId))) {
+        sendJson(response, 400, { error: 'Поле photoId должно содержать идентификатор фото или null' });
+        return;
+      }
+      if (photoId !== null) {
+        const selectedPhoto = photos.find((photo) => (
+          photo.id === photoId && photo.date.startsWith(`${period}-`)
+        ));
+        if (!selectedPhoto) {
+          sendJson(response, 400, { error: `Выбранное фото не относится к ${isMonth ? 'этому месяцу' : 'этому году'}` });
+          return;
+        }
+      }
+
+      const selections = isMonth ? highlightSelections.months : highlightSelections.years;
+      const previousPhotoId = selections.get(period);
+      if (photoId === null) selections.delete(period);
+      else selections.set(period, photoId);
+      try {
+        writeHighlightSelections();
+      } catch (error) {
+        if (previousPhotoId) selections.set(period, previousPhotoId);
+        else selections.delete(period);
+        console.error(`Не удалось сохранить фото ${isMonth ? 'месяца' : 'года'}: ${error.message}`);
+        sendJson(response, 500, { error: 'Не удалось сохранить отметку' });
+        return;
+      }
+
+      highlights = mergeHighlightSelections(defaultHighlights);
+      const state = highlightSelectionState();
+      notifyEvent('highlight-selection-updated', state);
+      sendJson(response, 200, state);
+    });
     return;
   }
 
@@ -1094,26 +1382,28 @@ function handleRequest(request, response) {
 
 async function startPhotoDayServer(options = {}) {
   configurePaths(options);
-  shouldConvertImages = options.convertImages ?? shouldConvertImages;
+  shouldConvertImages = sourceMode === 'folder' && (options.convertImages ?? shouldConvertImages);
   fs.mkdirSync(CONTENT_ROOT, { recursive: true });
   fs.mkdirSync(STATE_ROOT, { recursive: true });
 
+  highlightSelections = readHighlightSelections();
+  blurDates = readBlurDates();
+  photoSelections = readPhotoSelections();
   hasLoadedIndexCache = false;
   if (shouldIndexMetadata) {
     if (!loadIndexCache()) {
       photos = [];
+      defaultHighlights = { years: [], months: [] };
       highlights = { years: [], months: [] };
       indexedPhotoFiles.clear();
     }
     diary = sourceMode === 'folder' ? scanDiary() : [];
   } else {
-    if (!await convertNewImages()) {
+    if (!await convertImagesForOperation(null)) {
       throw new Error('Сервер не запущен: проверьте ошибку конвертации.');
     }
     loadArchive();
   }
-  blurDates = readBlurDates();
-  photoSelections = readPhotoSelections();
 
   const server = http.createServer(handleRequest);
   const port = options.port ?? PORT;
@@ -1138,8 +1428,10 @@ async function startPhotoDayServer(options = {}) {
     url,
     get contentRoot() { return CONTENT_ROOT; },
     get hasCachedIndex() { return hasLoadedIndexCache; },
+    get convertsImages() { return shouldConvertImages; },
     setContentRoot: switchArchiveRoot,
     setContentSource: switchContentSource,
+    setConvertImages,
     reindex: () => refreshArchive(),
     close: () => new Promise((resolve, reject) => {
       clearInterval(keepAliveTimer);

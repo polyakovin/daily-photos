@@ -49,6 +49,10 @@ const viewerBlurStatus = document.querySelector('#viewerBlurStatus');
 const viewerAlternatives = document.querySelector('#viewerAlternatives');
 const viewerAlternativesTrack = document.querySelector('#viewerAlternativesTrack');
 const viewerChoiceStatus = document.querySelector('#viewerChoiceStatus');
+const viewerHighlightActions = document.querySelector('#viewerHighlightActions');
+const viewerMonthHighlight = document.querySelector('#viewerMonthHighlight');
+const viewerYearHighlight = document.querySelector('#viewerYearHighlight');
+const viewerHighlightStatus = document.querySelector('#viewerHighlightStatus');
 const desktopBridge = window.photoDayDesktop;
 const archiveSettingsButton = document.querySelector('#archiveSettingsButton');
 const archiveSettingsName = document.querySelector('#archiveSettingsName');
@@ -62,6 +66,7 @@ const archiveChooseButton = document.querySelector('#archiveChooseButton');
 const archiveChooseLabel = document.querySelector('#archiveChooseLabel');
 const archiveComputerButton = document.querySelector('#archiveComputerButton');
 const archiveRevealButton = document.querySelector('#archiveRevealButton');
+const archiveConvertToggle = document.querySelector('#archiveConvertToggle');
 const archiveSetupClose = document.querySelector('#archiveSetupClose');
 const archiveIndexProgress = document.querySelector('#archiveIndexProgress');
 const archiveIndexDetail = document.querySelector('#archiveIndexDetail');
@@ -81,6 +86,8 @@ let photos = [];
 let byDate = new Map();
 let diaryByDate = new Map();
 let photoSelections = new Map();
+let yearHighlightSelections = new Map();
+let monthHighlightSelections = new Map();
 let yearHighlights = new Map();
 let monthHighlights = new Map();
 let yearHighlightThumbnails = new Map();
@@ -122,7 +129,9 @@ let presentationMode = readStoredPresentationMode();
 let birthDate = readStoredBirthDate();
 let blurStatusTimer = null;
 let viewerChoiceStatusTimer = null;
+let viewerHighlightStatusTimer = null;
 const photoSelectionRequestSequences = new Map();
+const highlightSelectionRequestSequences = new Map();
 let desktopArchiveState = null;
 let backgroundOperationHideTimer = null;
 let archiveSelectionInProgress = false;
@@ -209,6 +218,8 @@ function updateArchiveSettingsUi(state) {
   archiveSetupPath.textContent = state?.path || 'Источник пока не выбран';
   archiveSetupPath.title = state?.path || '';
   archiveRevealButton.disabled = !state?.canReveal;
+  archiveConvertToggle.checked = Boolean(state?.convertImages);
+  archiveConvertToggle.disabled = !state?.canConvertImages;
 }
 
 function showArchiveSetup(mode = 'settings') {
@@ -1545,6 +1556,95 @@ function showViewerChoiceStatus(message, isError = false) {
   }, 2600);
 }
 
+function showViewerHighlightStatus(message, isError = false) {
+  clearTimeout(viewerHighlightStatusTimer);
+  viewerHighlightStatus.textContent = message;
+  viewerHighlightStatus.classList.toggle('is-error', isError);
+  viewerHighlightStatusTimer = setTimeout(() => {
+    viewerHighlightStatus.textContent = '';
+    viewerHighlightStatus.classList.remove('is-error');
+  }, 2600);
+}
+
+function replaceHighlights(value) {
+  const years = Array.isArray(value?.years) ? value.years : [];
+  const months = Array.isArray(value?.months) ? value.months : [];
+  yearHighlights = new Map(years.map((item) => [item.year, item.src]));
+  monthHighlights = new Map(months.map((item) => [`${item.year}-${String(item.month).padStart(2, '0')}`, item.src]));
+  yearHighlightThumbnails = new Map(years.map((item) => [item.year, item.thumbnailSrc || item.src]));
+  monthHighlightThumbnails = new Map(months.map((item) => [`${item.year}-${String(item.month).padStart(2, '0')}`, item.thumbnailSrc || item.src]));
+  yearHighlightDates = new Map(years.map((item) => [item.year, item.date]));
+  monthHighlightDates = new Map(months.map((item) => [`${item.year}-${String(item.month).padStart(2, '0')}`, item.date]));
+}
+
+function replaceHighlightSelections(value) {
+  yearHighlightSelections = new Map(Object.entries(value?.years || {}));
+  monthHighlightSelections = new Map(Object.entries(value?.months || {}));
+}
+
+function updateViewerHighlightControls(photo = activePhotos[activeIndex]) {
+  const hasPhoto = Boolean(photo?.src && photo?.id);
+  viewerHighlightActions.hidden = !hasPhoto;
+  if (!hasPhoto) return;
+
+  const year = photo.date.slice(0, 4);
+  const month = photo.date.slice(0, 7);
+  const controls = [
+    [viewerMonthHighlight, monthHighlightSelections.get(month) === photo.id, 'месяца'],
+    [viewerYearHighlight, yearHighlightSelections.get(year) === photo.id, 'года']
+  ];
+  for (const [button, active, label] of controls) {
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', String(active));
+    button.querySelector('span').textContent = active ? '★' : '☆';
+    button.title = active ? `Снять отметку «Фото ${label}»` : `Отметить как фото ${label}`;
+  }
+}
+
+async function setPeriodHighlight(scope) {
+  const photo = activePhotos[activeIndex];
+  if (!photo?.id || !photo.src) return;
+  const isMonth = scope === 'month';
+  const period = photo.date.slice(0, isMonth ? 7 : 4);
+  const selections = isMonth ? monthHighlightSelections : yearHighlightSelections;
+  const button = isMonth ? viewerMonthHighlight : viewerYearHighlight;
+  const previousPhotoId = selections.get(period);
+  const nextPhotoId = previousPhotoId === photo.id ? null : photo.id;
+  const requestKey = `${scope}:${period}`;
+  const requestSequence = (highlightSelectionRequestSequences.get(requestKey) || 0) + 1;
+  highlightSelectionRequestSequences.set(requestKey, requestSequence);
+
+  if (nextPhotoId) selections.set(period, nextPhotoId);
+  else selections.delete(period);
+  updateViewerHighlightControls(photo);
+  button.disabled = true;
+  showViewerHighlightStatus('Сохраняем отметку…');
+
+  try {
+    const response = await fetch(`/api/highlight-selections/${scope}/${period}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photoId: nextPhotoId })
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(result?.error || 'Не удалось сохранить отметку');
+    if (requestSequence !== highlightSelectionRequestSequences.get(requestKey)) return;
+    replaceHighlightSelections(result.selections);
+    replaceHighlights(result.highlights);
+    renderCalendar();
+    updateViewerHighlightControls();
+    showViewerHighlightStatus(nextPhotoId ? `Фото ${isMonth ? 'месяца' : 'года'} сохранено` : 'Отметка снята');
+  } catch (error) {
+    if (requestSequence !== highlightSelectionRequestSequences.get(requestKey)) return;
+    if (previousPhotoId) selections.set(period, previousPhotoId);
+    else selections.delete(period);
+    updateViewerHighlightControls();
+    showViewerHighlightStatus(error.message, true);
+  } finally {
+    if (requestSequence === highlightSelectionRequestSequences.get(requestKey)) button.disabled = false;
+  }
+}
+
 function refreshPreferredPhotoInViews(date) {
   if (!byDate.size) return;
   renderCalendar();
@@ -1829,6 +1929,7 @@ function updateViewer() {
   viewerBlurControl.hidden = !hasPhoto;
   viewerBlurToggle.checked = hasPhoto && blurDates.has(photo.date);
   viewerBlurToggle.disabled = !hasPhoto;
+  updateViewerHighlightControls(photo);
   renderViewerAlternatives(photo);
 }
 
@@ -1839,29 +1940,27 @@ function movePhoto(amount) {
 
 async function init() {
   try {
-    const [response, diaryResponse, highlightsResponse, blurDatesResponse, photoSelectionsResponse] = await Promise.all([
+    const [response, diaryResponse, highlightsResponse, blurDatesResponse, photoSelectionsResponse, highlightSelectionsResponse] = await Promise.all([
       fetch('/api/photos'),
       fetch('/api/diary'),
       fetch('/api/highlights').catch(() => null),
       fetch('/api/blur-dates').catch(() => null),
-      fetch('/api/photo-selections').catch(() => null)
+      fetch('/api/photo-selections').catch(() => null),
+      fetch('/api/highlight-selections').catch(() => null)
     ]);
     if (!response.ok) throw new Error('Не удалось прочитать архив');
     photos = await response.json();
     if (!diaryResponse.ok) throw new Error('Не удалось прочитать дневник');
     diaryByDate = new Map((await diaryResponse.json()).map((entry) => [entry.date, entry]));
     if (highlightsResponse?.ok) {
-      const highlights = await highlightsResponse.json();
-      yearHighlights = new Map(highlights.years.map((item) => [item.year, item.src]));
-      monthHighlights = new Map(highlights.months.map((item) => [`${item.year}-${String(item.month).padStart(2, '0')}`, item.src]));
-      yearHighlightThumbnails = new Map(highlights.years.map((item) => [item.year, item.thumbnailSrc || item.src]));
-      monthHighlightThumbnails = new Map(highlights.months.map((item) => [`${item.year}-${String(item.month).padStart(2, '0')}`, item.thumbnailSrc || item.src]));
-      yearHighlightDates = new Map(highlights.years.map((item) => [item.year, item.date]));
-      monthHighlightDates = new Map(highlights.months.map((item) => [`${item.year}-${String(item.month).padStart(2, '0')}`, item.date]));
+      replaceHighlights(await highlightsResponse.json());
     }
     if (blurDatesResponse?.ok) replaceBlurDates(await blurDatesResponse.json());
     if (photoSelectionsResponse?.ok) {
       photoSelections = new Map(Object.entries(await photoSelectionsResponse.json()));
+    }
+    if (highlightSelectionsResponse?.ok) {
+      replaceHighlightSelections(await highlightSelectionsResponse.json());
     }
 
     for (const photo of photos) {
@@ -1927,6 +2026,17 @@ function watchArchiveUpdates() {
       }
     } catch {
       // Следующее изменение выбора придёт новым событием.
+    }
+  });
+  events.addEventListener('highlight-selection-updated', (event) => {
+    try {
+      const state = JSON.parse(event.data);
+      replaceHighlightSelections(state.selections);
+      replaceHighlights(state.highlights);
+      renderCalendar();
+      if (viewer.open) updateViewerHighlightControls();
+    } catch {
+      // Следующее изменение отметок придёт новым событием.
     }
   });
 }
@@ -2058,6 +2168,8 @@ document.querySelectorAll('[data-close]').forEach((element) => element.addEventL
 document.querySelector('#previousPhoto').addEventListener('click', () => movePhoto(-1));
 document.querySelector('#nextPhoto').addEventListener('click', () => movePhoto(1));
 viewerDiaryToggle.addEventListener('click', () => setViewerDiaryVisible(!viewerDiaryVisible));
+viewerMonthHighlight.addEventListener('click', () => setPeriodHighlight('month'));
+viewerYearHighlight.addEventListener('click', () => setPeriodHighlight('year'));
 viewerBlurToggle.addEventListener('change', async () => {
   const photo = activePhotos[activeIndex];
   if (!photo) return;
@@ -2165,6 +2277,27 @@ archiveRevealButton.addEventListener('click', async () => {
   if (!opened) {
     archiveSetupError.textContent = 'Не удалось открыть папку в проводнике.';
     archiveSetupError.hidden = false;
+  }
+});
+archiveConvertToggle.addEventListener('change', async () => {
+  if (!desktopBridge) return;
+  const previousValue = Boolean(desktopArchiveState?.convertImages);
+  const requestedValue = archiveConvertToggle.checked;
+  archiveConvertToggle.disabled = true;
+  archiveSetupError.hidden = true;
+  try {
+    const state = await desktopBridge.setArchiveConversion(requestedValue);
+    updateArchiveSettingsUi(state);
+    if (state.error) {
+      archiveSetupError.textContent = state.error;
+      archiveSetupError.hidden = false;
+    }
+  } catch (error) {
+    archiveConvertToggle.checked = previousValue;
+    archiveSetupError.textContent = `Не удалось изменить настройку: ${error.message}`;
+    archiveSetupError.hidden = false;
+  } finally {
+    archiveConvertToggle.disabled = !desktopArchiveState?.canConvertImages;
   }
 });
 
