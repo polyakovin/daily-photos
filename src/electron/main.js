@@ -1,9 +1,10 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const fs = require('fs');
 const path = require('path');
 const { startPhotoDayServer } = require('../server');
 const { automaticPhotoRoots } = require('./photo-search-roots');
+const { createPhotoPreviewGenerator } = require('./photo-preview-cache');
 const { createUpdateManager } = require('./update-manager');
 
 const SETTINGS_FILE_NAME = 'settings.json';
@@ -281,12 +282,14 @@ async function startApplication() {
   const initialArchive = configuredFolderAvailable ? archivePath : emptyArchive;
   const automaticRoots = sourceMode === 'computer' ? photoSearchRoots() : [];
   const roots = sourceMode === 'computer' && automaticRoots.length ? automaticRoots : [initialArchive];
+  const indexedPreviewGenerator = createPhotoPreviewGenerator({ nativeImage });
 
   photoDayServer = await startPhotoDayServer({
     contentRoot: initialArchive,
     stateRoot: app.getPath('userData'),
     convertImages: false,
     metadataIndex: true,
+    indexedPreviewGenerator,
     mode: sourceMode,
     roots,
     port: 0

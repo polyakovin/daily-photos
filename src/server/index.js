@@ -13,6 +13,7 @@ let DIARY_ROOT = path.join(CONTENT_ROOT, '_diary');
 let STATE_ROOT = path.resolve(process.env.PHOTO_DAY_STATE_ROOT || path.join(PROJECT_ROOT, '.local'));
 let TMP_ROOT = path.join(STATE_ROOT, 'tmp');
 let PREVIEW_ROOT = path.join(TMP_ROOT, 'previews');
+let INDEXED_PREVIEW_ROOT = path.join(STATE_ROOT, 'cache', 'photo-previews');
 let BLUR_DATES_FILE = path.join(STATE_ROOT, 'presentation_blur_dates.json');
 let INDEX_CACHE_FILE = path.join(STATE_ROOT, 'photo-index.json');
 let PHOTO_SELECTIONS_FILE = path.join(STATE_ROOT, 'daily_photo_selections.json');
@@ -32,6 +33,7 @@ const updateClients = new Set();
 
 let shouldConvertImages = process.env.PHOTO_DAY_CONVERT_IMAGES !== '0';
 let shouldIndexMetadata = false;
+let indexedPreviewGenerator = null;
 let sourceMode = 'folder';
 let sourceRoots = [CONTENT_ROOT];
 let archiveWatcher = null;
@@ -39,18 +41,30 @@ let operationSequence = 0;
 let activeOperation = null;
 let hasLoadedIndexCache = false;
 const indexedPhotoFiles = new Map();
+const indexedPreviewJobs = new Map();
 let photoSelections = new Map();
 
-function configurePaths({ contentRoot, stateRoot, metadataIndex, mode, roots } = {}) {
+function configurePaths({
+  contentRoot,
+  stateRoot,
+  metadataIndex,
+  indexedPreviewGenerator: nextIndexedPreviewGenerator,
+  mode,
+  roots
+} = {}) {
   if (contentRoot) CONTENT_ROOT = path.resolve(contentRoot);
   if (stateRoot) STATE_ROOT = path.resolve(stateRoot);
   if (typeof metadataIndex === 'boolean') shouldIndexMetadata = metadataIndex;
+  if (typeof nextIndexedPreviewGenerator === 'function' || nextIndexedPreviewGenerator === null) {
+    indexedPreviewGenerator = nextIndexedPreviewGenerator;
+  }
   if (mode === 'folder' || mode === 'computer') sourceMode = mode;
   if (Array.isArray(roots) && roots.length) sourceRoots = roots.map((root) => path.resolve(root));
   else if (contentRoot) sourceRoots = [CONTENT_ROOT];
   DIARY_ROOT = path.join(CONTENT_ROOT, '_diary');
   TMP_ROOT = path.join(STATE_ROOT, 'tmp');
   PREVIEW_ROOT = path.join(TMP_ROOT, 'previews');
+  INDEXED_PREVIEW_ROOT = path.join(STATE_ROOT, 'cache', 'photo-previews');
   BLUR_DATES_FILE = path.join(STATE_ROOT, 'presentation_blur_dates.json');
   INDEX_CACHE_FILE = path.join(STATE_ROOT, 'photo-index.json');
   PHOTO_SELECTIONS_FILE = path.join(STATE_ROOT, 'daily_photo_selections.json');
@@ -318,14 +332,19 @@ function installIndexedRecords(records) {
   photos = records.map((record) => {
     const filePath = path.resolve(record.filePath);
     const id = indexedPhotoId(filePath);
-    indexedPhotoFiles.set(id, filePath);
-    const source = `/indexed-photo/${id}?v=${Number(record.modified) || 0}`;
+    const modified = Math.max(0, Math.trunc(Number(record.modified) || 0));
+    const size = Math.max(0, Math.trunc(Number(record.size) || 0));
+    const version = `${modified}-${size}`;
+    indexedPhotoFiles.set(id, { filePath, version });
+    const source = `/indexed-photo/${id}?v=${modified}`;
     return {
       id,
       date: record.date,
       name: record.name || path.parse(filePath).name || 'Фото дня',
       src: source,
-      thumbnailSrc: source
+      thumbnailSrc: indexedPreviewGenerator
+        ? `/indexed-preview/${id}?v=${version}`
+        : source
     };
   });
   highlights = buildIndexedHighlights(photos);
@@ -754,7 +773,7 @@ function switchArchiveRoot(nextRoot) {
   return switchContentSource({ mode: 'folder', roots: [nextRoot] });
 }
 
-function sendFile(response, filePath) {
+function sendFile(response, filePath, { cacheControl = 'no-cache' } = {}) {
   const extension = path.extname(filePath).toLowerCase();
   const types = {
     '.html': 'text/html; charset=utf-8',
@@ -775,10 +794,71 @@ function sendFile(response, filePath) {
     }
     response.writeHead(200, {
       'Content-Type': types[extension] || 'application/octet-stream',
-      'Cache-Control': 'no-cache'
+      'Content-Length': stats.size,
+      'Cache-Control': cacheControl
     });
     fs.createReadStream(filePath).pipe(response);
   });
+}
+
+function indexedPreviewCachePath(id, version) {
+  return path.join(INDEXED_PREVIEW_ROOT, id.slice(0, 2), id, `${version}.jpg`);
+}
+
+async function removeOldIndexedPreviews(currentPath) {
+  const directory = path.dirname(currentPath);
+  let entries;
+  try {
+    entries = await fs.promises.readdir(directory, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  await Promise.all(entries.map(async (entry) => {
+    const entryPath = path.join(directory, entry.name);
+    if (!entry.isFile() || entryPath === currentPath || !entry.name.endsWith('.jpg')) return;
+    await fs.promises.unlink(entryPath).catch(() => {});
+  }));
+}
+
+async function ensureIndexedPreview(id, indexedPhoto) {
+  const sourceStats = await fs.promises.stat(indexedPhoto.filePath);
+  if (!sourceStats.isFile()) throw new Error('Оригинал фотографии больше не существует');
+  const currentVersion = `${Math.trunc(sourceStats.mtimeMs)}-${sourceStats.size}`;
+  const cachePath = indexedPreviewCachePath(id, currentVersion);
+  try {
+    const stats = await fs.promises.stat(cachePath);
+    if (stats.isFile() && stats.size > 0) return cachePath;
+  } catch {
+    // Превью ещё не создано.
+  }
+
+  let job = indexedPreviewJobs.get(cachePath);
+  if (!job) {
+    job = indexedPreviewGenerator(indexedPhoto.filePath, cachePath)
+      .then(async () => {
+        const stats = await fs.promises.stat(cachePath);
+        if (!stats.isFile() || stats.size === 0) throw new Error('Создано пустое превью');
+        await removeOldIndexedPreviews(cachePath);
+        return cachePath;
+      })
+      .finally(() => indexedPreviewJobs.delete(cachePath));
+    indexedPreviewJobs.set(cachePath, job);
+  }
+  return job;
+}
+
+async function sendIndexedPreview(response, id, indexedPhoto) {
+  if (!indexedPreviewGenerator) {
+    sendFile(response, indexedPhoto.filePath);
+    return;
+  }
+  try {
+    const previewPath = await ensureIndexedPreview(id, indexedPhoto);
+    sendFile(response, previewPath, { cacheControl: 'public, max-age=31536000, immutable' });
+  } catch (error) {
+    console.error(`Не удалось создать превью для ${indexedPhoto.filePath}: ${error.message}`);
+    sendFile(response, indexedPhoto.filePath);
+  }
 }
 
 function handleRequest(request, response) {
@@ -945,14 +1025,25 @@ function handleRequest(request, response) {
     return;
   }
 
-  if (requestUrl.pathname.startsWith('/indexed-photo/')) {
-    const id = requestUrl.pathname.slice('/indexed-photo/'.length);
-    const filePath = indexedPhotoFiles.get(id);
-    if (!filePath || !IMAGE_RE.test(filePath)) {
+  if (requestUrl.pathname.startsWith('/indexed-preview/')) {
+    const id = requestUrl.pathname.slice('/indexed-preview/'.length);
+    const indexedPhoto = indexedPhotoFiles.get(id);
+    if (!/^[a-f0-9]{32}$/.test(id) || !indexedPhoto || !IMAGE_RE.test(indexedPhoto.filePath)) {
       response.writeHead(404).end('Not found');
       return;
     }
-    sendFile(response, filePath);
+    void sendIndexedPreview(response, id, indexedPhoto);
+    return;
+  }
+
+  if (requestUrl.pathname.startsWith('/indexed-photo/')) {
+    const id = requestUrl.pathname.slice('/indexed-photo/'.length);
+    const indexedPhoto = indexedPhotoFiles.get(id);
+    if (!/^[a-f0-9]{32}$/.test(id) || !indexedPhoto || !IMAGE_RE.test(indexedPhoto.filePath)) {
+      response.writeHead(404).end('Not found');
+      return;
+    }
+    sendFile(response, indexedPhoto.filePath);
     return;
   }
 
