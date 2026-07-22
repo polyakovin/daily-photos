@@ -11,6 +11,12 @@ const BLUR_DATES_STORAGE_KEY = 'photo-day:presentation-blur-dates';
 const LIFE_BIRTH_DATE_STORAGE_KEY = 'photo-day:birth-date';
 const DATE_KEY_PATTERN = /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
+const {
+  newestViewState,
+  normalizeViewState,
+  readViewState,
+  storeViewState
+} = window.PhotoDayViewState;
 
 const grid = document.querySelector('#calendarGrid');
 const monthTitle = document.querySelector('#monthTitle');
@@ -108,6 +114,7 @@ let timelineRenderFrame = 0;
 let timelineEntries = [];
 let timelineVirtualStart = -1;
 let timelineVirtualEnd = -1;
+let timelineRestoring = false;
 const timelineLoadedImages = new Set();
 let lifeStart = null;
 let lifeEnd = null;
@@ -137,6 +144,17 @@ let backgroundOperationHideTimer = null;
 let archiveSelectionInProgress = false;
 let archiveReloadTimer = null;
 let archiveReloadPending = false;
+let navigationState = readStoredNavigationState();
+let activeView = 'calendar';
+let navigationSaveTimer = null;
+
+function readStoredNavigationState() {
+  try {
+    return readViewState(window.localStorage);
+  } catch {
+    return normalizeViewState(null);
+  }
+}
 
 function hideBackgroundOperation() {
   clearTimeout(backgroundOperationHideTimer);
@@ -250,6 +268,13 @@ async function initializeDesktopShell() {
       updateLifeBirthDateUi();
     } catch {
       updateLifeBirthDateUi('Не удалось прочитать сохранённую дату', true);
+    }
+    try {
+      const desktopNavigationState = await desktopBridge.getNavigationState();
+      navigationState = newestViewState(navigationState, desktopNavigationState);
+      storeViewState(window.localStorage, navigationState);
+    } catch {
+      // Локальная копия всё равно восстановит состояние после перезагрузки страницы.
     }
     if (!state.available) {
       if (state.configured) {
@@ -390,6 +415,61 @@ function formatDate(dateString) {
 
 function dateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function currentTimelineState() {
+  if (timelineRestoring || !timelineRendered || !timelineEntries.length || !timelineTrack.clientWidth) {
+    return navigationState.timeline;
+  }
+  const { itemWidth, gap, paddingLeft } = timelineMetrics();
+  const itemExtent = itemWidth + gap;
+  const centeredIndex = Math.max(0, Math.min(
+    timelineEntries.length - 1,
+    Math.round((timelineTrack.scrollLeft + timelineTrack.clientWidth / 2 - paddingLeft - itemWidth / 2) / itemExtent)
+  ));
+  const maxScroll = Math.max(0, timelineTrack.scrollWidth - timelineTrack.clientWidth);
+  return {
+    date: timelineEntries[centeredIndex]?.dateKey || navigationState.timeline.date,
+    progress: maxScroll ? timelineTrack.scrollLeft / maxScroll : 0
+  };
+}
+
+function captureNavigationState() {
+  const currentPhoto = viewer.open ? activePhotos[activeIndex] : null;
+  return normalizeViewState({
+    ...navigationState,
+    updatedAt: Date.now(),
+    view: activeView,
+    calendar: {
+      focus: calendarFocus,
+      date: dateKey(visibleDate)
+    },
+    timeline: currentTimelineState(),
+    viewer: currentPhoto ? {
+      date: currentPhoto.date,
+      diaryVisible: viewerDiaryVisible,
+      photoId: currentPhoto.id || null
+    } : null
+  });
+}
+
+function persistNavigationState({ desktopDelay = 0 } = {}) {
+  navigationState = captureNavigationState();
+  try {
+    storeViewState(window.localStorage, navigationState);
+  } catch {
+    // Десктопная копия остаётся доступна, даже если localStorage запрещён.
+  }
+  clearTimeout(navigationSaveTimer);
+  if (!desktopBridge?.setNavigationState) return;
+  const storeDesktopState = () => desktopBridge.setNavigationState(navigationState).catch(() => {});
+  if (desktopDelay > 0) navigationSaveTimer = setTimeout(storeDesktopState, desktopDelay);
+  else storeDesktopState();
+}
+
+function scheduleNavigationStateSave() {
+  clearTimeout(navigationSaveTimer);
+  navigationSaveTimer = setTimeout(() => persistNavigationState({ desktopDelay: 0 }), 140);
 }
 
 function isValidBirthDate(value) {
@@ -797,6 +877,7 @@ function shiftMonth(amount) {
   else if (calendarFocus === 'week') visibleDate = new Date(visibleDate.getFullYear(), visibleDate.getMonth(), visibleDate.getDate() + amount * 7);
   else visibleDate = new Date(visibleDate.getFullYear(), visibleDate.getMonth() + amount, 1);
   renderCalendar();
+  persistNavigationState();
 }
 
 function setCalendarFocus(focus) {
@@ -808,12 +889,20 @@ function setCalendarFocus(focus) {
     button.setAttribute('aria-pressed', String(active));
   });
   renderCalendar();
+  persistNavigationState();
 }
 
-function switchView(view) {
+function switchView(view, { persist = true } = {}) {
   const isTimeline = view === 'timeline';
   const isLife = view === 'life';
   const isRandom = view === 'random';
+  if (activeView === 'timeline' && !isTimeline && timelineRendered) {
+    navigationState = normalizeViewState({
+      ...navigationState,
+      timeline: currentTimelineState()
+    });
+  }
+  activeView = view;
   document.querySelector('#calendarView').hidden = isTimeline || isLife || isRandom;
   document.querySelector('#timelineView').hidden = !isTimeline;
   document.querySelector('#lifeView').hidden = !isLife;
@@ -825,15 +914,19 @@ function switchView(view) {
   });
 
   if (isTimeline && !timelineRendered) {
+    const restoredTimelineState = navigationState.timeline;
+    timelineRestoring = true;
     renderTimeline();
     requestAnimationFrame(() => {
       timelineTrack.style.scrollBehavior = 'auto';
-      timelineTrack.scrollLeft = timelineTrack.scrollWidth;
+      restoreTimelinePosition(restoredTimelineState);
       renderTimelineWindow(true);
       requestAnimationFrame(() => {
         timelineTrack.style.scrollBehavior = '';
+        timelineRestoring = false;
         updateTimelineScrollbar();
         activateTimelinePreviews();
+        scheduleNavigationStateSave();
       });
     });
   }
@@ -844,6 +937,7 @@ function switchView(view) {
     exitRandomFullscreen();
     stopRandomShow();
   }
+  if (persist) persistNavigationState();
 }
 
 function renderTimeline() {
@@ -915,6 +1009,41 @@ function timelineMetrics() {
     gap: mobile ? 24 : 36,
     paddingLeft: parseFloat(styles.paddingLeft) || 0
   };
+}
+
+function restoreTimelinePosition(state) {
+  const maxScroll = Math.max(0, timelineTrack.scrollWidth - timelineTrack.clientWidth);
+  if (!timelineEntries.length || !maxScroll) {
+    timelineTrack.scrollLeft = 0;
+    return;
+  }
+
+  if (!state?.date) {
+    timelineTrack.scrollLeft = Number.isFinite(state?.progress)
+      ? state.progress * maxScroll
+      : maxScroll;
+    return;
+  }
+
+  let index = timelineEntries.findIndex((entry) => entry.dateKey === state.date);
+  if (index < 0) {
+    const nextIndex = timelineEntries.findIndex((entry) => entry.dateKey > state.date);
+    if (nextIndex < 0) index = timelineEntries.length - 1;
+    else if (nextIndex === 0) index = 0;
+    else {
+      const targetTime = parseDate(state.date).getTime();
+      const previousDistance = Math.abs(timelineEntries[nextIndex - 1].date.getTime() - targetTime);
+      const nextDistance = Math.abs(timelineEntries[nextIndex].date.getTime() - targetTime);
+      index = previousDistance <= nextDistance ? nextIndex - 1 : nextIndex;
+    }
+  }
+
+  const { itemWidth, gap, paddingLeft } = timelineMetrics();
+  const centeredScroll = paddingLeft
+    + index * (itemWidth + gap)
+    + itemWidth / 2
+    - timelineTrack.clientWidth / 2;
+  timelineTrack.scrollLeft = Math.max(0, Math.min(maxScroll, centeredScroll));
 }
 
 function makeTimelineItem(entry, index) {
@@ -1155,7 +1284,10 @@ function renderLifeCanvas() {
 
   const radius = Math.max(0.8, spacing * 0.26);
   const photoRadius = Math.max(1.4, spacing * 0.4);
-  const photoColor = getComputedStyle(document.documentElement).getPropertyValue('--photo-green').trim() || '#73967b';
+  const themeStyles = getComputedStyle(document.documentElement);
+  const photoColor = themeStyles.getPropertyValue('--photo-green').trim() || '#73967b';
+  const livedColor = themeStyles.getPropertyValue('--life-lived').trim() || 'rgba(169, 188, 158, 0.62)';
+  const futureColor = themeStyles.getPropertyValue('--life-future').trim() || 'rgba(169, 188, 158, 0.12)';
   const photoIndices = new Map();
 
   for (const [dateKey, dayPhotos] of lifePhotoDates) {
@@ -1174,8 +1306,8 @@ function renderLifeCanvas() {
     context.fillStyle = photo
       ? photoColor
       : index <= todayIndex
-        ? 'rgba(169, 188, 158, 0.62)'
-        : 'rgba(169, 188, 158, 0.12)';
+        ? livedColor
+        : futureColor;
     context.fill();
   }
 
@@ -1590,8 +1722,8 @@ function updateViewerHighlightControls(photo = activePhotos[activeIndex]) {
   const year = photo.date.slice(0, 4);
   const month = photo.date.slice(0, 7);
   const controls = [
-    [viewerMonthHighlight, monthHighlightSelections.get(month) === photo.id, 'месяца'],
-    [viewerYearHighlight, yearHighlightSelections.get(year) === photo.id, 'года']
+    [viewerMonthHighlight, monthHighlightSelections.get(month) === photo.date, 'месяца'],
+    [viewerYearHighlight, yearHighlightSelections.get(year) === photo.date, 'года']
   ];
   for (const [button, active, label] of controls) {
     button.classList.toggle('is-active', active);
@@ -1608,13 +1740,13 @@ async function setPeriodHighlight(scope) {
   const period = photo.date.slice(0, isMonth ? 7 : 4);
   const selections = isMonth ? monthHighlightSelections : yearHighlightSelections;
   const button = isMonth ? viewerMonthHighlight : viewerYearHighlight;
-  const previousPhotoId = selections.get(period);
-  const nextPhotoId = previousPhotoId === photo.id ? null : photo.id;
+  const previousPhotoDate = selections.get(period);
+  const nextPhotoDate = previousPhotoDate === photo.date ? null : photo.date;
   const requestKey = `${scope}:${period}`;
   const requestSequence = (highlightSelectionRequestSequences.get(requestKey) || 0) + 1;
   highlightSelectionRequestSequences.set(requestKey, requestSequence);
 
-  if (nextPhotoId) selections.set(period, nextPhotoId);
+  if (nextPhotoDate) selections.set(period, nextPhotoDate);
   else selections.delete(period);
   updateViewerHighlightControls(photo);
   button.disabled = true;
@@ -1624,7 +1756,7 @@ async function setPeriodHighlight(scope) {
     const response = await fetch(`/api/highlight-selections/${scope}/${period}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ photoId: nextPhotoId })
+      body: JSON.stringify({ photoId: nextPhotoDate ? photo.id : null })
     });
     const result = await response.json().catch(() => null);
     if (!response.ok) throw new Error(result?.error || 'Не удалось сохранить отметку');
@@ -1633,10 +1765,10 @@ async function setPeriodHighlight(scope) {
     replaceHighlights(result.highlights);
     renderCalendar();
     updateViewerHighlightControls();
-    showViewerHighlightStatus(nextPhotoId ? `Фото ${isMonth ? 'месяца' : 'года'} сохранено` : 'Отметка снята');
+    showViewerHighlightStatus(nextPhotoDate ? `Фото ${isMonth ? 'месяца' : 'года'} сохранено` : 'Отметка снята');
   } catch (error) {
     if (requestSequence !== highlightSelectionRequestSequences.get(requestKey)) return;
-    if (previousPhotoId) selections.set(period, previousPhotoId);
+    if (previousPhotoDate) selections.set(period, previousPhotoDate);
     else selections.delete(period);
     updateViewerHighlightControls();
     showViewerHighlightStatus(error.message, true);
@@ -1748,6 +1880,7 @@ function openViewer(dayPhotos, index = null) {
   viewerDiaryVisible = false;
   updateViewer();
   viewer.showModal();
+  persistNavigationState();
 }
 
 function openDiary(date) {
@@ -1756,6 +1889,41 @@ function openDiary(date) {
   viewerDiaryVisible = true;
   updateViewer();
   viewer.showModal();
+  persistNavigationState();
+}
+
+function prepareViewerPressZoom(event) {
+  const isBlurred = presentationMode && viewerImage.classList.contains('is-presentation-blurred');
+  if (event.button !== 0 || isBlurred || !viewerImage.classList.contains('is-loaded')) return;
+
+  const bounds = viewerImage.getBoundingClientRect();
+  if (!bounds.width || !bounds.height || !viewerImage.naturalWidth || !viewerImage.naturalHeight) return;
+
+  const imageScale = Math.min(
+    bounds.width / viewerImage.naturalWidth,
+    bounds.height / viewerImage.naturalHeight
+  );
+  const displayedWidth = viewerImage.naturalWidth * imageScale;
+  const displayedHeight = viewerImage.naturalHeight * imageScale;
+  const displayedLeft = (bounds.width - displayedWidth) / 2;
+  const displayedTop = (bounds.height - displayedHeight) / 2;
+  const pointerX = event.clientX - bounds.left;
+  const pointerY = event.clientY - bounds.top;
+
+  if (pointerX < displayedLeft || pointerX > displayedLeft + displayedWidth
+      || pointerY < displayedTop || pointerY > displayedTop + displayedHeight) return;
+
+  viewerImage.style.setProperty('--viewer-zoom-origin-x', `${pointerX / bounds.width * 100}%`);
+  viewerImage.style.setProperty('--viewer-zoom-origin-y', `${pointerY / bounds.height * 100}%`);
+  viewerImage.classList.add('is-press-zoomable');
+  viewerImage.setPointerCapture?.(event.pointerId);
+}
+
+function resetViewerPressZoom(event) {
+  viewerImage.classList.remove('is-press-zoomable');
+  if (event?.pointerId !== undefined && viewerImage.hasPointerCapture?.(event.pointerId)) {
+    viewerImage.releasePointerCapture(event.pointerId);
+  }
 }
 
 function renderDiaryMarkdown(markdown) {
@@ -1894,6 +2062,7 @@ function updateViewer() {
   const date = parseDate(photo.date);
   const diary = diaryByDate.get(photo.date);
   const hasPhoto = Boolean(photo.src);
+  resetViewerPressZoom();
   viewerPanel.classList.toggle('has-diary', Boolean(diary));
   viewerPanel.classList.toggle('is-diary-only', !hasPhoto);
   if (diary) renderDiaryMarkdown(diary.content);
@@ -1931,11 +2100,29 @@ function updateViewer() {
   viewerBlurToggle.disabled = !hasPhoto;
   updateViewerHighlightControls(photo);
   renderViewerAlternatives(photo);
+  if (viewer.open) persistNavigationState();
 }
 
 function movePhoto(amount) {
   activeIndex = (activeIndex + amount + activePhotos.length) % activePhotos.length;
   updateViewer();
+}
+
+function restoreOpenViewer(state) {
+  if (!state?.date) return;
+  const dayPhotos = byDate.get(state.date) || [];
+  if (dayPhotos.length) {
+    const requestedIndex = state.photoId
+      ? dayPhotos.findIndex((photo) => photo.id === state.photoId)
+      : -1;
+    openViewer(dayPhotos, requestedIndex >= 0 ? requestedIndex : null);
+    if (state.diaryVisible && diaryByDate.has(state.date)) {
+      setViewerDiaryVisible(true);
+      persistNavigationState();
+    }
+  } else if (diaryByDate.has(state.date)) {
+    openDiary(state.date);
+  }
 }
 
 async function init() {
@@ -1983,9 +2170,20 @@ async function init() {
     const latest = parseDate(archiveDates.at(-1));
     firstArchiveMonth = new Date(earliest.getFullYear(), earliest.getMonth(), 1);
     lastArchiveMonth = new Date(latest.getFullYear(), latest.getMonth(), 1);
-    visibleDate = new Date(latest.getFullYear(), latest.getMonth(), 1);
+    visibleDate = navigationState.calendar.date
+      ? parseDate(navigationState.calendar.date)
+      : new Date(latest.getFullYear(), latest.getMonth(), 1);
+    calendarFocus = navigationState.calendar.focus;
+    document.querySelectorAll('[data-calendar-focus]').forEach((button) => {
+      const active = button.dataset.calendarFocus === calendarFocus;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
     if (birthDate || photos.length) initializeLife();
     renderCalendar();
+    switchView(navigationState.view, { persist: false });
+    restoreOpenViewer(navigationState.viewer);
+    setTimeout(() => persistNavigationState(), 250);
   } catch (error) {
     monthTitle.textContent = 'Архив недоступен';
     monthCount.textContent = error.message;
@@ -2046,13 +2244,17 @@ document.querySelector('#nextMonth').addEventListener('click', () => shiftMonth(
 document.querySelector('#todayButton').addEventListener('click', () => {
   visibleDate = new Date();
   if (calendarFocus === 'years') setCalendarFocus('month');
-  else renderCalendar();
+  else {
+    renderCalendar();
+    persistNavigationState();
+  }
 });
 document.querySelectorAll('.view-switch').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
 presentationButton.addEventListener('click', () => setPresentationMode(!presentationMode));
 timelineTrack.addEventListener('scroll', () => {
   scheduleTimelineScrollbarUpdate();
   scheduleTimelineWindowRender();
+  scheduleNavigationStateSave();
 }, { passive: true });
 timelineScrollbar.addEventListener('input', () => {
   const maxScroll = Math.max(0, timelineTrack.scrollWidth - timelineTrack.clientWidth);
@@ -2157,9 +2359,11 @@ window.addEventListener('resize', () => {
     }
   });
 });
+window.addEventListener('photo-day-theme-change', renderLifeCanvas);
 yearSelect.addEventListener('change', () => {
   visibleDate = new Date(Number(yearSelect.value), visibleDate.getMonth(), 1);
   renderCalendar();
+  persistNavigationState();
 });
 document.querySelectorAll('[data-calendar-focus]').forEach((button) => {
   button.addEventListener('click', () => setCalendarFocus(button.dataset.calendarFocus));
@@ -2167,7 +2371,10 @@ document.querySelectorAll('[data-calendar-focus]').forEach((button) => {
 document.querySelectorAll('[data-close]').forEach((element) => element.addEventListener('click', () => viewer.close()));
 document.querySelector('#previousPhoto').addEventListener('click', () => movePhoto(-1));
 document.querySelector('#nextPhoto').addEventListener('click', () => movePhoto(1));
-viewerDiaryToggle.addEventListener('click', () => setViewerDiaryVisible(!viewerDiaryVisible));
+viewerDiaryToggle.addEventListener('click', () => {
+  setViewerDiaryVisible(!viewerDiaryVisible);
+  persistNavigationState();
+});
 viewerMonthHighlight.addEventListener('click', () => setPeriodHighlight('month'));
 viewerYearHighlight.addEventListener('click', () => setPeriodHighlight('year'));
 viewerBlurToggle.addEventListener('change', async () => {
@@ -2210,6 +2417,16 @@ viewerImage.addEventListener('load', async () => {
   viewerImage.classList.add('is-loaded');
   imageLoader.classList.add('is-hidden');
 });
+viewerImage.addEventListener('pointerdown', prepareViewerPressZoom);
+viewerImage.addEventListener('pointerup', resetViewerPressZoom);
+viewerImage.addEventListener('pointercancel', resetViewerPressZoom);
+viewerImage.addEventListener('lostpointercapture', resetViewerPressZoom);
+viewerImage.addEventListener('dragstart', (event) => event.preventDefault());
+viewer.addEventListener('close', () => {
+  resetViewerPressZoom();
+  persistNavigationState();
+});
+window.addEventListener('beforeunload', () => persistNavigationState({ desktopDelay: 0 }));
 document.addEventListener('keydown', (event) => {
   if (viewer.open) {
     if (event.key === 'ArrowLeft' && activePhotos.length > 1) movePhoto(-1);

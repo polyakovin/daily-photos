@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, nativeTheme, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const fs = require('fs');
 const path = require('path');
@@ -16,6 +16,7 @@ let sourceMode = 'folder';
 let convertImages = false;
 let birthDate = '';
 let lastUpdateCheckAt = 0;
+let navigationState = null;
 let updateManager = null;
 
 function settingsFile() {
@@ -34,6 +35,17 @@ function isValidBirthDate(value) {
     && candidate.getTime() <= todayUtc;
 }
 
+function sanitizeNavigationState(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized.length > 8192) return null;
+    return JSON.parse(serialized);
+  } catch {
+    return null;
+  }
+}
+
 function readSettings() {
   try {
     const parsed = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
@@ -46,10 +58,18 @@ function readSettings() {
         : '',
       lastUpdateCheckAt: Number.isFinite(parsed.lastUpdateCheckAt) && parsed.lastUpdateCheckAt > 0
         ? parsed.lastUpdateCheckAt
-        : 0
+        : 0,
+      navigationState: sanitizeNavigationState(parsed.navigationState)
     };
   } catch {
-    return { archivePath: '', sourceMode: 'folder', convertImages: false, birthDate: '', lastUpdateCheckAt: 0 };
+    return {
+      archivePath: '',
+      sourceMode: 'folder',
+      convertImages: false,
+      birthDate: '',
+      lastUpdateCheckAt: 0,
+      navigationState: null
+    };
   }
 }
 
@@ -59,7 +79,7 @@ function writeSettings() {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(
     temporary,
-    `${JSON.stringify({ archivePath, sourceMode, convertImages, birthDate, lastUpdateCheckAt }, null, 2)}\n`,
+    `${JSON.stringify({ archivePath, sourceMode, convertImages, birthDate, lastUpdateCheckAt, navigationState }, null, 2)}\n`,
     'utf8'
   );
   fs.renameSync(temporary, target);
@@ -240,6 +260,20 @@ function installIpcHandlers() {
     }
     return birthDate;
   });
+  ipcMain.handle('ui:get-navigation-state', () => navigationState);
+  ipcMain.handle('ui:set-navigation-state', (_event, value) => {
+    const nextNavigationState = sanitizeNavigationState(value);
+    if (!nextNavigationState) throw new Error('Некорректное состояние интерфейса');
+    const previousNavigationState = navigationState;
+    navigationState = nextNavigationState;
+    try {
+      writeSettings();
+    } catch (error) {
+      navigationState = previousNavigationState;
+      throw error;
+    }
+    return navigationState;
+  });
 }
 
 function buildApplicationMenu() {
@@ -300,7 +334,7 @@ async function createWindow() {
     minWidth: 940,
     minHeight: 650,
     show: false,
-    backgroundColor: '#f3efe5',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0e1512' : '#f3efe5',
     title: 'Фото дня',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -334,6 +368,7 @@ async function startApplication() {
   convertImages = process.platform === 'darwin' && sourceMode === 'folder' && settings.convertImages;
   birthDate = settings.birthDate;
   lastUpdateCheckAt = settings.lastUpdateCheckAt;
+  navigationState = settings.navigationState;
   const emptyArchive = path.join(app.getPath('userData'), 'empty-archive');
   fs.mkdirSync(emptyArchive, { recursive: true });
   const configuredFolderAvailable = sourceMode === 'folder' && directoryExists(archivePath);

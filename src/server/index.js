@@ -32,7 +32,9 @@ const DATE_KEY_RE = /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/
 const UI_FILES = new Map([
   ['/app.html', 'index.html'],
   ['/styles.css', 'styles.css'],
+  ['/theme.js', 'theme.js'],
   ['/life-range.js', 'life-range.js'],
+  ['/view-state.js', 'view-state.js'],
   ['/app.js', 'app.js']
 ]);
 const updateClients = new Set();
@@ -143,13 +145,19 @@ function readHighlightSelections() {
   try {
     const values = JSON.parse(fs.readFileSync(HIGHLIGHT_SELECTIONS_FILE, 'utf8'));
     if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error('ожидался объект');
-    const years = Object.entries(values.years || {}).filter(([year, photoId]) => (
-      /^(?:19|20)\d{2}$/.test(year) && typeof photoId === 'string' && /^[a-f0-9]{32}$/.test(photoId)
+    const isStoredSelection = (period, value) => (
+      typeof value === 'string'
+      && (
+        (isValidDateKey(value) && value.startsWith(`${period}-`))
+        || /^[a-f0-9]{32}$/.test(value)
+      )
+    );
+    const years = Object.entries(values.years || {}).filter(([year, photoDate]) => (
+      /^(?:19|20)\d{2}$/.test(year) && isStoredSelection(year, photoDate)
     ));
-    const months = Object.entries(values.months || {}).filter(([month, photoId]) => (
+    const months = Object.entries(values.months || {}).filter(([month, photoDate]) => (
       /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/.test(month)
-      && typeof photoId === 'string'
-      && /^[a-f0-9]{32}$/.test(photoId)
+      && isStoredSelection(month, photoDate)
     ));
     return { years: new Map(years), months: new Map(months) };
   } catch (error) {
@@ -171,6 +179,39 @@ function writeHighlightSelections() {
   const temporaryFile = `${HIGHLIGHT_SELECTIONS_FILE}.tmp`;
   fs.writeFileSync(temporaryFile, `${JSON.stringify(serializedHighlightSelections(), null, 2)}\n`, 'utf8');
   fs.renameSync(temporaryFile, HIGHLIGHT_SELECTIONS_FILE);
+}
+
+function migrateLegacyHighlightSelections() {
+  const nextSelections = { years: new Map(), months: new Map() };
+  let hasResolvedIds = false;
+
+  for (const [scope, selections] of Object.entries(highlightSelections)) {
+    for (const [period, value] of selections) {
+      if (isValidDateKey(value)) {
+        nextSelections[scope].set(period, value);
+        continue;
+      }
+      const photo = photos.find((candidate) => (
+        candidate.id === value && candidate.date.startsWith(`${period}-`)
+      ));
+      if (photo) {
+        nextSelections[scope].set(period, photo.date);
+        hasResolvedIds = true;
+      } else {
+        nextSelections[scope].set(period, value);
+      }
+    }
+  }
+
+  if (!hasResolvedIds) return;
+  const previousSelections = highlightSelections;
+  highlightSelections = nextSelections;
+  try {
+    writeHighlightSelections();
+  } catch (error) {
+    highlightSelections = previousSelections;
+    console.error(`Не удалось заменить ID отметок периода на даты: ${error.message}`);
+  }
 }
 
 function sendJson(response, status, value) {
@@ -262,8 +303,8 @@ function conversionDestination(filePath) {
 function pendingSelectionIdReplacements() {
   const selectedIds = new Set([
     ...photoSelections.values(),
-    ...highlightSelections.years.values(),
-    ...highlightSelections.months.values()
+    ...[...highlightSelections.years.values()].filter((value) => /^[a-f0-9]{32}$/.test(value)),
+    ...[...highlightSelections.months.values()].filter((value) => /^[a-f0-9]{32}$/.test(value))
   ]);
   const replacements = new Map();
   if (!selectedIds.size || sourceMode !== 'folder') return replacements;
@@ -312,7 +353,6 @@ function migrateSelectionIds(replacements) {
       highlightSelectionsChanged = true;
     }
   }
-
   try {
     if (photoSelectionsChanged) writePhotoSelections();
     if (highlightSelectionsChanged) writeHighlightSelections();
@@ -509,6 +549,7 @@ function installIndexedRecords(records) {
         : source
     };
   });
+  migrateLegacyHighlightSelections();
   defaultHighlights = buildIndexedHighlights(photos);
   highlights = mergeHighlightSelections(defaultHighlights);
 }
@@ -732,12 +773,22 @@ function mergeHighlightSelections(baseHighlights = defaultHighlights) {
     [`${item.year}-${String(item.month).padStart(2, '0')}`, item]
   )));
 
-  for (const [year, photoId] of highlightSelections.years) {
-    const photo = photos.find((candidate) => candidate.id === photoId && candidate.date.startsWith(`${year}-`));
+  const selectedPhoto = (period, value) => {
+    if (!isValidDateKey(value)) {
+      return photos.find((candidate) => (
+        candidate.id === value && candidate.date.startsWith(`${period}-`)
+      ));
+    }
+    const selectedId = photoSelections.get(value);
+    return photos.find((candidate) => candidate.date === value && candidate.id === selectedId)
+      || photos.find((candidate) => candidate.date === value);
+  };
+  for (const [year, photoDate] of highlightSelections.years) {
+    const photo = selectedPhoto(year, photoDate);
     if (photo) years.set(year, highlightFromPhoto(photo));
   }
-  for (const [month, photoId] of highlightSelections.months) {
-    const photo = photos.find((candidate) => candidate.id === photoId && candidate.date.startsWith(`${month}-`));
+  for (const [month, photoDate] of highlightSelections.months) {
+    const photo = selectedPhoto(month, photoDate);
     if (photo) months.set(month, highlightFromPhoto(photo));
   }
 
@@ -817,6 +868,7 @@ async function refreshArchive(operationId = null) {
     const nextHighlights = scanHighlights();
     const nextDiary = scanDiary();
     photos = nextPhotos;
+    migrateLegacyHighlightSelections();
     defaultHighlights = nextHighlights;
     highlights = mergeHighlightSelections(defaultHighlights);
     diary = nextDiary;
@@ -880,6 +932,7 @@ function loadArchive({ notify = false } = {}) {
   const nextHighlights = scanHighlights();
   const nextDiary = scanDiary();
   photos = nextPhotos;
+  migrateLegacyHighlightSelections();
   defaultHighlights = nextHighlights;
   highlights = mergeHighlightSelections(defaultHighlights);
   diary = nextDiary;
@@ -1144,8 +1197,9 @@ function handleRequest(request, response) {
         sendJson(response, 400, { error: 'Поле photoId должно содержать идентификатор фото или null' });
         return;
       }
+      let selectedPhoto = null;
       if (photoId !== null) {
-        const selectedPhoto = photos.find((photo) => (
+        selectedPhoto = photos.find((photo) => (
           photo.id === photoId && photo.date.startsWith(`${period}-`)
         ));
         if (!selectedPhoto) {
@@ -1155,13 +1209,13 @@ function handleRequest(request, response) {
       }
 
       const selections = isMonth ? highlightSelections.months : highlightSelections.years;
-      const previousPhotoId = selections.get(period);
+      const previousPhotoDate = selections.get(period);
       if (photoId === null) selections.delete(period);
-      else selections.set(period, photoId);
+      else selections.set(period, selectedPhoto.date);
       try {
         writeHighlightSelections();
       } catch (error) {
-        if (previousPhotoId) selections.set(period, previousPhotoId);
+        if (previousPhotoDate) selections.set(period, previousPhotoDate);
         else selections.delete(period);
         console.error(`Не удалось сохранить фото ${isMonth ? 'месяца' : 'года'}: ${error.message}`);
         sendJson(response, 500, { error: 'Не удалось сохранить отметку' });
@@ -1230,6 +1284,13 @@ function handleRequest(request, response) {
         console.error(`Не удалось сохранить фото дня: ${error.message}`);
         sendJson(response, 500, { error: 'Не удалось сохранить выбор' });
         return;
+      }
+      if (
+        highlightSelections.years.get(date.slice(0, 4)) === date
+        || highlightSelections.months.get(date.slice(0, 7)) === date
+      ) {
+        highlights = mergeHighlightSelections(defaultHighlights);
+        notifyEvent('highlight-selection-updated', highlightSelectionState());
       }
       const value = { date, photoId };
       notifyEvent('photo-selection-updated', value);

@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('photoDayDesktop', {
   revealArchiveDirectory: () => ipcRenderer.invoke('archive:reveal-directory'),
   getBirthDate: () => ipcRenderer.invoke('profile:get-birth-date'),
   setBirthDate: (value) => ipcRenderer.invoke('profile:set-birth-date', value),
+  getNavigationState: () => ipcRenderer.invoke('ui:get-navigation-state'),
+  setNavigationState: (value) => ipcRenderer.invoke('ui:set-navigation-state', value),
   onSettingsRequested: (callback) => {
     const handler = () => callback();
     ipcRenderer.on('archive:request-settings', handler);
