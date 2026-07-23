@@ -110,10 +110,20 @@ progress_seen=0
 progress_total=0
 delete_sources=()
 delete_destinations=()
+delete_ready=()
 preview_target=""
 
 report_progress() {
   printf 'PHOTO_DAY_PROGRESS conversion %d %d\n' "$progress_seen" "$progress_total"
+}
+
+report_file() {
+  local status="$1"
+  local source="$2"
+  local encoded_source
+
+  encoded_source="$(LC_ALL=C printf '%s' "$source" | od -An -v -tx1 | tr -d '[:space:]')"
+  printf 'PHOTO_DAY_FILE %s %s\n' "$status" "$encoded_source"
 }
 
 finish_progress_item() {
@@ -207,26 +217,55 @@ encode_static_webp() {
   return 1
 }
 
+encode_decoded_webp() {
+  local input="$1"
+  local output="$2"
+  local decoded
+
+  decoded="${output%.webp}.decoded.$$.png"
+  if ffmpeg -hide_banner -loglevel error -y -i "$input" \
+      -frames:v 1 -pix_fmt rgba "$decoded" \
+    && cwebp -quiet -q "$quality" -metadata all "$decoded" -o "$output"; then
+    if ! exiftool -overwrite_original -TagsFromFile "$input" -all:all \
+        -IFD0:Orientation= -IFD1:Orientation= -XMP-tiff:Orientation= \
+        -IFD0:Orientation#=1 "$output" >/dev/null 2>&1; then
+      echo "Предупреждение: не удалось перенести метаданные из $input" >&2
+    fi
+    rm -f "$decoded"
+    return 0
+  fi
+
+  rm -f "$decoded" "$output"
+  return 1
+}
+
 convert_one() {
   local source="$1"
-  local kind destination temporary intermediate conversion_status final_orientation
+  local kind destination temporary intermediate conversion_status final_orientation delete_index
 
   kind="$(image_kind "$source")" || return
   destination="$(destination_for "$source")" || return
   temporary="${destination%.webp}.tmp.$$.webp"
   intermediate=""
   conversion_status=0
+  delete_index=-1
 
   if ((delete_source)); then
+    delete_index=$delete_count
     delete_sources[$delete_count]="$source"
     delete_destinations[$delete_count]="$destination"
+    delete_ready[$delete_count]=0
     ((delete_count += 1))
   fi
+
+  report_file processing "$source"
 
   # Пустой или оборванный файл не считаем готовым результатом.
   if [[ -s "$destination" && "$overwrite" -eq 0 ]]; then
     if ((delete_source == 0)) || webpinfo -quiet "$destination" >/dev/null 2>&1; then
       ((skipped += 1))
+      if ((delete_index >= 0)); then delete_ready[$delete_index]=1; fi
+      report_file skipped "$source"
       finish_progress_item
       return
     fi
@@ -240,8 +279,7 @@ convert_one() {
       gif2webp -quiet -q "$quality" -m 6 -metadata all "$source" -o "$temporary" || conversion_status=$?
       ;;
     avif)
-      ffmpeg -hide_banner -loglevel error -y -i "$source" -map_metadata 0 \
-        -frames:v 1 -c:v libwebp -quality "$quality" -compression_level 6 "$temporary" || conversion_status=$?
+      encode_decoded_webp "$source" "$temporary" || conversion_status=$?
       ;;
     heic|heif)
       if ! command -v heif-convert >/dev/null 2>&1; then
@@ -271,10 +309,13 @@ convert_one() {
   if [[ "$conversion_status" -eq 0 && -s "$temporary" ]]; then
     mv -f "$temporary" "$destination"
     ((converted += 1))
+    if ((delete_index >= 0)); then delete_ready[$delete_index]=1; fi
+    report_file converted "$source"
   else
     rm -f "$temporary"
     printf 'Ошибка: %s\n' "$source" >&2
     ((failed += 1))
+    report_file failed "$source"
   fi
 
   ((processed += 1))
@@ -313,28 +354,30 @@ else
   exit 1
 fi
 
-if ((delete_source && delete_count > 0 && failed == 0)); then
-  deletion_safe=1
-  for destination in "${delete_destinations[@]}"; do
+if ((delete_source && delete_count > 0)); then
+  for ((delete_index = 0; delete_index < delete_count; delete_index += 1)); do
+    source="${delete_sources[$delete_index]}"
+    destination="${delete_destinations[$delete_index]}"
+    if ((delete_ready[delete_index] == 0)); then
+      printf 'Оригинал сохранён после ошибки: %s\n' "$source" >&2
+      continue
+    fi
     if [[ ! -s "$destination" ]] || ! webpinfo -quiet "$destination" >/dev/null 2>&1; then
       printf 'Ошибка проверки WebP: %s\n' "$destination" >&2
-      deletion_safe=0
+      printf 'Оригинал сохранён: %s\n' "$source" >&2
+      ((failed += 1))
+      report_file failed "$source"
+      continue
+    fi
+    if rm -- "$source"; then
+      ((deleted += 1))
+      report_file replaced "$source"
+    else
+      printf 'Ошибка удаления: %s\n' "$source" >&2
+      ((failed += 1))
+      report_file failed "$source"
     fi
   done
-
-  if ((deletion_safe)); then
-    for source in "${delete_sources[@]}"; do
-      if rm -- "$source"; then
-        ((deleted += 1))
-      else
-        printf 'Ошибка удаления: %s\n' "$source" >&2
-        ((failed += 1))
-      fi
-    done
-  else
-    echo "Исходники не удалены: проверка WebP завершилась с ошибкой." >&2
-    ((failed += 1))
-  fi
 fi
 
 if ((skip_previews == 0)); then

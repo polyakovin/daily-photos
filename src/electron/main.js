@@ -1,8 +1,16 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, nativeImage, nativeTheme, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const fs = require('fs');
 const path = require('path');
 const { startPhotoDayServer } = require('../server');
+const { embeddedPhotoDate } = require('../server/photo-indexer');
+const { applicationEditMenu, contextMenuTemplate } = require('./edit-menu');
+const {
+  CONVERTIBLE_IMAGE_RE,
+  STANDARD_IMAGE_RE,
+  importPhotoFiles,
+  isValidImportDate
+} = require('./photo-importer');
 const { automaticPhotoRoots } = require('./photo-search-roots');
 const { createPhotoPreviewGenerator } = require('./photo-preview-cache');
 const { createUpdateManager } = require('./update-manager');
@@ -229,10 +237,55 @@ async function setArchiveConversion(enabled) {
   if (convertImages) {
     const converted = await photoDayServer.reindex();
     if (!converted) {
-      return { ...archiveState(), error: 'Не удалось конвертировать все файлы. Проверьте сообщение об ошибке и наличие утилит WebP.' };
+      return {
+        ...archiveState(),
+        error: photoDayServer.lastOperationError
+          || 'Не удалось конвертировать все файлы; оригиналы сохранены.'
+      };
     }
   }
   return archiveState();
+}
+
+async function importDroppedPhotos(filePaths, date) {
+  if (sourceMode !== 'folder' || !directoryExists(archivePath)) {
+    throw new Error('Чтобы добавлять фотографии, сначала выберите одну папку архива');
+  }
+
+  const imported = await importPhotoFiles({
+    archivePath,
+    filePaths,
+    date,
+    allowConvertibleFormats: process.platform === 'darwin' && convertImages
+  });
+  const indexed = await photoDayServer.reindex();
+  return {
+    date,
+    imported: imported.map(({ name, destinationPath }) => ({ name, destinationPath })),
+    indexed,
+    warning: indexed
+      ? ''
+      : photoDayServer.lastOperationError || 'Файлы сохранены, но индекс архива не обновился'
+  };
+}
+
+async function suggestDroppedPhotoDate(filePaths) {
+  if (!Array.isArray(filePaths) || !filePaths.length || filePaths.length > 100) return '';
+  for (const filePath of filePaths) {
+    if (
+      typeof filePath !== 'string'
+      || !path.isAbsolute(filePath)
+      || (!STANDARD_IMAGE_RE.test(filePath) && !CONVERTIBLE_IMAGE_RE.test(filePath))
+    ) continue;
+    try {
+      if (!(await fs.promises.stat(filePath)).isFile()) continue;
+      const date = await embeddedPhotoDate(filePath);
+      if (date && isValidImportDate(date)) return date;
+    } catch {
+      // Нечитаемый файл будет отклонён при импорте; для подсказки используем следующий.
+    }
+  }
+  return '';
 }
 
 function installIpcHandlers() {
@@ -240,6 +293,8 @@ function installIpcHandlers() {
   ipcMain.handle('archive:choose-directory', chooseArchiveDirectory);
   ipcMain.handle('archive:scan-photo-locations', scanPhotoLocations);
   ipcMain.handle('archive:set-convert-images', (_event, enabled) => setArchiveConversion(enabled));
+  ipcMain.handle('archive:suggest-photo-date', (_event, filePaths) => suggestDroppedPhotoDate(filePaths));
+  ipcMain.handle('archive:import-photos', (_event, filePaths, date) => importDroppedPhotos(filePaths, date));
   ipcMain.handle('archive:reveal-directory', async () => {
     if (sourceMode !== 'folder' || !directoryExists(archivePath)) return false;
     const error = await shell.openPath(archivePath);
@@ -310,6 +365,7 @@ function buildApplicationMenu() {
         process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }
       ]
     },
+    applicationEditMenu(),
     {
       label: 'Вид',
       submenu: [
@@ -347,6 +403,22 @@ async function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
+  });
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const menu = Menu.buildFromTemplate(contextMenuTemplate(params, {
+      copyImage: (x, y) => mainWindow?.webContents.copyImageAt(x, y),
+      copyLink: (url) => clipboard.writeText(url),
+      openLink: (url) => {
+        void shell.openExternal(url).catch((error) => {
+          console.error(`Не удалось открыть ссылку: ${error.message}`);
+        });
+      }
+    }));
+    menu.popup({
+      window: mainWindow,
+      frame: params.frame || undefined,
+      sourceType: params.menuSourceType
+    });
   });
   mainWindow.webContents.on('will-navigate', (event, url) => {
     try {
@@ -404,7 +476,11 @@ async function startApplication() {
   updateManager.start();
   if (archiveState().available && (convertImages || !photoDayServer.hasCachedIndex)) {
     photoDayServer.reindex()
-      .then(() => mainWindow?.webContents.reload())
+      .then(() => {
+        if (!photoDayServer.lastOperationError && !photoDayServer.lastOperationWarning) {
+          mainWindow?.webContents.reload();
+        }
+      })
       .catch((error) => {
         console.error(`Не удалось создать индекс фотографий: ${error.message}`);
       });

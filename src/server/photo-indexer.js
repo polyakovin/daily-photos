@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const exifr = require('exifr');
+const { importDateOverrideForFile } = require('./import-date-overrides');
 
 const IMAGE_RE = /\.(?:jpe?g|png|webp|gif|avif)$/i;
 const METADATA_DATE_TAGS = [
@@ -106,6 +107,12 @@ function dateFromPath(filePath) {
     match = [parts[0], parts[1], parts[2], day[1]];
   }
   return dateKeyFromValue(`${match[1]}-${match[2]}-${match[3]}`);
+}
+
+function importedDateFromPath(filePath) {
+  const fileName = path.basename(filePath);
+  const match = fileName.match(/^((?:19|20)\d{2}-\d{2}-\d{2})\.photoday\./i);
+  return match ? dateKeyFromValue(match[1]) : null;
 }
 
 async function embeddedPhotoDate(filePath) {
@@ -234,7 +241,7 @@ async function discoverImages(roots, onProgress) {
   return { files, skippedDirectories };
 }
 
-async function readIndexedPhoto(filePath) {
+async function readIndexedPhoto(filePath, { dateOverrides, overrideRoot } = {}) {
   let stats;
   try {
     stats = await fs.promises.stat(filePath);
@@ -243,7 +250,12 @@ async function readIndexedPhoto(filePath) {
   }
   if (!stats.isFile()) return null;
 
-  const date = await embeddedPhotoDate(filePath)
+  const selectedImportDate = dateOverrides && overrideRoot
+    ? importDateOverrideForFile(dateOverrides, overrideRoot, filePath)
+    : null;
+  const date = selectedImportDate
+    || importedDateFromPath(filePath)
+    || await embeddedPhotoDate(filePath)
     || dateFromPath(filePath)
     || dateKeyFromValue(stats.birthtime)
     || dateKeyFromValue(stats.mtime);
@@ -257,7 +269,7 @@ async function readIndexedPhoto(filePath) {
   };
 }
 
-async function indexPhotoRoots({ roots, onProgress } = {}) {
+async function indexPhotoRoots({ roots, onProgress, dateOverrides, overrideRoot } = {}) {
   const normalizedRoots = [...new Set((roots || []).map((root) => path.resolve(root)))];
   if (!normalizedRoots.length) throw new Error('Не указано, где искать фотографии');
   const { files, skippedDirectories } = await discoverImages(normalizedRoots, onProgress);
@@ -271,7 +283,7 @@ async function indexPhotoRoots({ roots, onProgress } = {}) {
     while (cursor < files.length) {
       const fileIndex = cursor;
       cursor += 1;
-      const photo = await readIndexedPhoto(files[fileIndex]);
+      const photo = await readIndexedPhoto(files[fileIndex], { dateOverrides, overrideRoot });
       if (photo) indexed.push(photo);
       completed += 1;
       const share = files.length ? completed / files.length : 1;
@@ -307,6 +319,8 @@ module.exports = {
   IMAGE_RE,
   dateFromPath,
   dateKeyFromValue,
+  embeddedPhotoDate,
+  importedDateFromPath,
   indexPhotoRoots,
   shouldSkipDirectory
 };

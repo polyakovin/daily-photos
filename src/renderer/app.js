@@ -11,6 +11,7 @@ const BLUR_DATES_STORAGE_KEY = 'photo-day:presentation-blur-dates';
 const LIFE_BIRTH_DATE_STORAGE_KEY = 'photo-day:birth-date';
 const DATE_KEY_PATTERN = /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
+const { suggestCalendarImportDate } = window.PhotoDayImportDate;
 const {
   newestViewState,
   normalizeViewState,
@@ -80,6 +81,7 @@ const archiveIndexAmount = document.querySelector('#archiveIndexAmount');
 const archiveIndexEta = document.querySelector('#archiveIndexEta');
 const archiveIndexBar = document.querySelector('#archiveIndexBar');
 const archiveIndexBarFill = document.querySelector('#archiveIndexBarFill');
+const archiveIndexLog = document.querySelector('#archiveIndexLog');
 const backgroundOperationTooltip = document.querySelector('#backgroundOperationTooltip');
 const backgroundOperationTitle = document.querySelector('#backgroundOperationTitle');
 const backgroundOperationDetail = document.querySelector('#backgroundOperationDetail');
@@ -87,6 +89,16 @@ const backgroundOperationAmount = document.querySelector('#backgroundOperationAm
 const backgroundOperationProgress = document.querySelector('#backgroundOperationProgress');
 const backgroundOperationProgressBar = document.querySelector('#backgroundOperationProgressBar');
 const backgroundOperationClose = document.querySelector('#backgroundOperationClose');
+const backgroundOperationLog = document.querySelector('#backgroundOperationLog');
+const photoImportDialog = document.querySelector('#photoImportDialog');
+const photoImportForm = document.querySelector('#photoImportForm');
+const photoImportClose = document.querySelector('#photoImportClose');
+const photoImportCancel = document.querySelector('#photoImportCancel');
+const photoImportSubmit = document.querySelector('#photoImportSubmit');
+const photoImportSummary = document.querySelector('#photoImportSummary');
+const photoImportDate = document.querySelector('#photoImportDate');
+const photoImportDateHint = document.querySelector('#photoImportDateHint');
+const photoImportError = document.querySelector('#photoImportError');
 
 let photos = [];
 let byDate = new Map();
@@ -141,12 +153,20 @@ const photoSelectionRequestSequences = new Map();
 const highlightSelectionRequestSequences = new Map();
 let desktopArchiveState = null;
 let backgroundOperationHideTimer = null;
+let backgroundOperationStatus = null;
 let archiveSelectionInProgress = false;
 let archiveReloadTimer = null;
 let archiveReloadPending = false;
 let navigationState = readStoredNavigationState();
 let activeView = 'calendar';
 let navigationSaveTimer = null;
+let viewerZoomPointerId = null;
+let viewerZoomStartX = 0;
+let viewerZoomStartY = 0;
+let pendingPhotoImportPaths = [];
+let photoImportInProgress = false;
+let photoDragDepth = 0;
+let photoImportSuggestionSequence = 0;
 
 function readStoredNavigationState() {
   try {
@@ -164,6 +184,19 @@ function hideBackgroundOperation() {
   }, 180);
 }
 
+function operationNeedsAcknowledgement() {
+  return ['error', 'warning'].includes(backgroundOperationStatus);
+}
+
+function dismissBackgroundOperation() {
+  hideBackgroundOperation();
+  backgroundOperationStatus = null;
+  if (!archiveReloadPending || archiveSelectionInProgress) return;
+  archiveReloadPending = false;
+  clearTimeout(archiveReloadTimer);
+  archiveReloadTimer = setTimeout(() => window.location.reload(), 200);
+}
+
 function formatIndexEta(seconds, { compact = false } = {}) {
   if (!Number.isFinite(seconds) || seconds <= 0) return '';
   const rounded = Math.max(1, Math.round(seconds));
@@ -177,6 +210,54 @@ function formatIndexEta(seconds, { compact = false } = {}) {
     minute: '2-digit'
   });
   return `Осталось около ${duration} · завершение примерно в ${expected}`;
+}
+
+function renderOperationFileLog(container, operation, { autoOpen = false } = {}) {
+  const files = Array.isArray(operation.files) ? operation.files : [];
+  const errors = Array.isArray(operation.errors) ? operation.errors.filter(Boolean) : [];
+  if (!files.length && !errors.length) {
+    container.hidden = true;
+    container.open = false;
+    container.dataset.operationId = '';
+    return;
+  }
+
+  container.hidden = false;
+  const summary = container.querySelector('summary');
+  const list = container.querySelector('ul');
+  const errorOutput = container.querySelector('pre');
+  const processed = Number.isFinite(operation.processedFiles) ? operation.processedFiles : files.length;
+  const isPartialList = processed > files.length;
+  summary.textContent = `${isPartialList ? 'Последние файлы' : 'Обработанные файлы'}: ${processed.toLocaleString('ru-RU')}`;
+
+  const statusLabels = {
+    processing: 'Обрабатывается',
+    converted: 'Сконвертирован',
+    skipped: 'Готовый WebP уже существует',
+    replaced: 'Оригинал заменён на WebP',
+    failed: 'Ошибка'
+  };
+  const fragment = document.createDocumentFragment();
+  for (const file of files) {
+    if (!file || typeof file.path !== 'string') continue;
+    const item = document.createElement('li');
+    item.dataset.status = statusLabels[file.status] ? file.status : 'converted';
+    item.title = `${statusLabels[file.status] || 'Обработан'}: ${file.path}`;
+    const pathLabel = document.createElement('span');
+    pathLabel.textContent = file.path;
+    item.append(pathLabel);
+    fragment.append(item);
+  }
+  list.replaceChildren(fragment);
+
+  errorOutput.hidden = !errors.length;
+  errorOutput.textContent = errors.join('\n');
+
+  const isNewOperation = container.dataset.operationId !== operation.id;
+  container.dataset.operationId = operation.id || '';
+  if (['error', 'warning'].includes(operation.status) || (autoOpen && isNewOperation)) {
+    container.open = true;
+  }
 }
 
 function showArchiveIndexOperation(operation) {
@@ -195,36 +276,43 @@ function showArchiveIndexOperation(operation) {
   const eta = formatIndexEta(Number(operation.etaSeconds));
   archiveIndexEta.textContent = operation.status === 'error'
     ? 'Индексация остановлена'
-    : operation.status === 'success'
-      ? 'Индекс готов'
-      : eta || 'Оцениваем время завершения…';
+    : operation.status === 'warning'
+      ? 'Индекс готов с предупреждениями'
+      : operation.status === 'success'
+        ? 'Индекс готов'
+        : eta || 'Оцениваем время завершения…';
+  renderOperationFileLog(archiveIndexLog, operation, { autoOpen: true });
 }
 
 function showBackgroundOperation(operation) {
   clearTimeout(backgroundOperationHideTimer);
+  backgroundOperationStatus = operation.status;
   const progress = Math.max(0, Math.min(100, Number(operation.progress) || 0));
   const hasCount = Number.isFinite(operation.completed)
     && Number.isFinite(operation.total)
     && operation.total > 0;
   backgroundOperationTooltip.hidden = false;
-  backgroundOperationTooltip.classList.remove('is-running', 'is-success', 'is-error');
+  backgroundOperationTooltip.classList.remove('is-running', 'is-success', 'is-warning', 'is-error');
   backgroundOperationTooltip.classList.add(`is-${operation.status}`);
   backgroundOperationTitle.textContent = operation.title || 'Фоновая операция';
   backgroundOperationDetail.textContent = operation.detail || '';
   const compactEta = formatIndexEta(Number(operation.etaSeconds), { compact: true });
   const progressLabel = hasCount
     ? `${operation.completed.toLocaleString('ru-RU')} из ${operation.total.toLocaleString('ru-RU')} · ${progress}%`
-    : operation.status === 'error' ? 'Ошибка' : operation.status === 'success' ? 'Готово' : `${progress}%`;
+    : operation.status === 'error'
+      ? 'Ошибка'
+      : operation.status === 'warning'
+        ? 'Есть предупреждения'
+        : operation.status === 'success' ? 'Готово' : `${progress}%`;
   backgroundOperationAmount.textContent = compactEta ? `${progressLabel} · ${compactEta}` : progressLabel;
   backgroundOperationProgressBar.style.width = `${progress}%`;
   backgroundOperationProgress.setAttribute('aria-valuenow', String(progress));
+  renderOperationFileLog(backgroundOperationLog, operation);
   showArchiveIndexOperation(operation);
   requestAnimationFrame(() => backgroundOperationTooltip.classList.add('is-visible'));
 
   if (operation.status === 'success') {
     backgroundOperationHideTimer = setTimeout(hideBackgroundOperation, 2600);
-  } else if (operation.status === 'error') {
-    backgroundOperationHideTimer = setTimeout(hideBackgroundOperation, 9000);
   }
 }
 
@@ -254,6 +342,160 @@ function showArchiveSetup(mode = 'settings') {
   archiveSetupError.hidden = true;
   archiveIndexProgress.hidden = true;
   if (!archiveSetupDialog.open) archiveSetupDialog.showModal();
+}
+
+function localDateKey(date = new Date()) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-');
+}
+
+function visibleCalendarImportDate() {
+  return suggestCalendarImportDate({
+    view: activeView,
+    focus: calendarFocus,
+    visibleDate,
+    occupiedDates: new Set(byDate.keys()),
+    today: new Date()
+  });
+}
+
+function visibleCalendarPeriodLabel() {
+  return {
+    year: 'открытого года',
+    month: 'открытого месяца',
+    week: 'открытой недели'
+  }[calendarFocus] || 'открытого периода';
+}
+
+function photoCountLabel(count) {
+  const lastTwo = count % 100;
+  const last = count % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return `${count} фотографий`;
+  if (last === 1) return `${count} фотография`;
+  if (last >= 2 && last <= 4) return `${count} фотографии`;
+  return `${count} фотографий`;
+}
+
+function droppedFileIsSupported(file) {
+  if (/\.(?:jpe?g|png|webp|gif|avif)$/i.test(file.name)) return true;
+  return Boolean(desktopArchiveState?.convertImages) && /\.(?:heic|heif)$/i.test(file.name);
+}
+
+function resetPhotoDragState() {
+  photoDragDepth = 0;
+  document.body.classList.remove('is-photo-dragging');
+}
+
+function closePhotoImportDialog() {
+  if (photoImportInProgress) return;
+  photoImportSuggestionSequence += 1;
+  pendingPhotoImportPaths = [];
+  if (photoImportDialog.open) photoImportDialog.close();
+}
+
+async function showPhotoImportDialog(files) {
+  const allFiles = [...files];
+  const exceedsLimit = allFiles.length > 100;
+  const supportedFiles = exceedsLimit ? [] : allFiles.filter(droppedFileIsSupported);
+  const paths = [];
+  for (const file of supportedFiles) {
+    try {
+      const filePath = desktopBridge.getPathForFile(file);
+      if (filePath) paths.push(filePath);
+    } catch {
+      // Файл без доступного системного пути будет показан как неподдерживаемый.
+    }
+  }
+
+  pendingPhotoImportPaths = paths;
+  const skippedCount = allFiles.length - paths.length;
+  const today = localDateKey();
+  const calendarSuggestion = visibleCalendarImportDate();
+  photoImportDate.value = today;
+  photoImportDate.max = today;
+  photoImportSummary.textContent = paths.length
+    ? `${photoCountLabel(paths.length)} ${paths.length === 1 ? 'будет сохранена' : 'будут сохранены'} в «${desktopArchiveState.name}».`
+    : 'Не удалось найти фотографии в поддерживаемом формате.';
+  photoImportDateHint.textContent = paths.length
+    ? 'Ищем дату съёмки в EXIF…'
+    : 'Поддерживаются WebP, JPEG, PNG, GIF и AVIF.';
+  photoImportError.hidden = skippedCount === 0 && paths.length > 0;
+  photoImportError.textContent = exceedsLimit
+    ? 'За один раз можно добавить не больше 100 фотографий.'
+    : paths.length
+    ? `Пропущено файлов: ${skippedCount}. Их формат не поддерживается или недоступен.`
+    : 'Добавить эти файлы не получится. Для HEIC/HEIF включите конвертацию в настройках папки.';
+  photoImportSubmit.disabled = paths.length === 0;
+  photoImportSubmit.textContent = 'Сохранить в папку';
+  photoImportCancel.disabled = false;
+  photoImportClose.disabled = false;
+  if (!photoImportDialog.open) photoImportDialog.showModal();
+  photoImportDate.focus();
+
+  if (!paths.length) return;
+  const suggestionSequence = ++photoImportSuggestionSequence;
+  try {
+    const suggestedDate = await desktopBridge.suggestPhotoDate(paths);
+    if (suggestionSequence !== photoImportSuggestionSequence || !photoImportDialog.open) return;
+    if (suggestedDate) {
+      if (photoImportDate.value === today) {
+        photoImportDate.value = suggestedDate;
+        photoImportDateHint.textContent = 'Дата предложена из EXIF фотографии. Её можно изменить.';
+      } else {
+        photoImportDateHint.textContent = 'Дата найдена в EXIF, но оставлена выбранная вами дата.';
+      }
+    } else {
+      if (calendarSuggestion && photoImportDate.value === today) {
+        photoImportDate.value = calendarSuggestion;
+        photoImportDateHint.textContent = `В EXIF дата не найдена — предложена последняя свободная дата из ${visibleCalendarPeriodLabel()}.`;
+      } else if (photoImportDate.value !== today) {
+        photoImportDateHint.textContent = 'В EXIF дата не найдена — оставлена выбранная вами дата.';
+      } else {
+        photoImportDateHint.textContent = 'В EXIF дата не найдена — предложена сегодняшняя. Её можно изменить.';
+      }
+    }
+  } catch {
+    if (suggestionSequence === photoImportSuggestionSequence && photoImportDialog.open) {
+      photoImportDateHint.textContent = 'Не удалось прочитать EXIF — предложена сегодняшняя дата.';
+    }
+  }
+}
+
+function handlePhotoDragEnter(event) {
+  if (!desktopBridge || !Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+  event.preventDefault();
+  photoDragDepth += 1;
+  document.body.classList.add('is-photo-dragging');
+}
+
+function handlePhotoDragOver(event) {
+  if (!desktopBridge || !Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+}
+
+function handlePhotoDragLeave(event) {
+  if (!desktopBridge || !Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+  event.preventDefault();
+  photoDragDepth = Math.max(0, photoDragDepth - 1);
+  if (!photoDragDepth) resetPhotoDragState();
+}
+
+function handlePhotoDrop(event) {
+  if (!desktopBridge || !Array.from(event.dataTransfer?.types || []).includes('Files')) return;
+  event.preventDefault();
+  resetPhotoDragState();
+  if (photoImportInProgress) return;
+  if (desktopArchiveState?.mode !== 'folder' || !desktopArchiveState?.available) {
+    showArchiveSetup('settings');
+    archiveSetupError.textContent = 'Для добавления фотографий перетаскиванием сначала выберите одну папку архива.';
+    archiveSetupError.hidden = false;
+    return;
+  }
+  void showPhotoImportDialog(event.dataTransfer.files);
 }
 
 async function initializeDesktopShell() {
@@ -1915,14 +2157,31 @@ function prepareViewerPressZoom(event) {
 
   viewerImage.style.setProperty('--viewer-zoom-origin-x', `${pointerX / bounds.width * 100}%`);
   viewerImage.style.setProperty('--viewer-zoom-origin-y', `${pointerY / bounds.height * 100}%`);
+  viewerImage.style.setProperty('--viewer-pan-x', '0px');
+  viewerImage.style.setProperty('--viewer-pan-y', '0px');
+  viewerZoomPointerId = event.pointerId;
+  viewerZoomStartX = event.clientX;
+  viewerZoomStartY = event.clientY;
   viewerImage.classList.add('is-press-zoomable');
   viewerImage.setPointerCapture?.(event.pointerId);
 }
 
+function moveViewerPressZoom(event) {
+  if (event.pointerId !== viewerZoomPointerId
+      || !viewerImage.classList.contains('is-press-zoomable')) return;
+
+  viewerImage.style.setProperty('--viewer-pan-x', `${event.clientX - viewerZoomStartX}px`);
+  viewerImage.style.setProperty('--viewer-pan-y', `${event.clientY - viewerZoomStartY}px`);
+}
+
 function resetViewerPressZoom(event) {
+  const pointerId = event?.pointerId ?? viewerZoomPointerId;
   viewerImage.classList.remove('is-press-zoomable');
-  if (event?.pointerId !== undefined && viewerImage.hasPointerCapture?.(event.pointerId)) {
-    viewerImage.releasePointerCapture(event.pointerId);
+  viewerImage.style.setProperty('--viewer-pan-x', '0px');
+  viewerImage.style.setProperty('--viewer-pan-y', '0px');
+  viewerZoomPointerId = null;
+  if (pointerId !== null && viewerImage.hasPointerCapture?.(pointerId)) {
+    viewerImage.releasePointerCapture(pointerId);
   }
 }
 
@@ -2200,7 +2459,7 @@ function watchArchiveUpdates() {
     }
   });
   events.addEventListener('archive-updated', () => {
-    if (archiveSelectionInProgress) {
+    if (archiveSelectionInProgress || photoImportInProgress || operationNeedsAcknowledgement()) {
       archiveReloadPending = true;
       return;
     }
@@ -2364,6 +2623,7 @@ yearSelect.addEventListener('change', () => {
   visibleDate = new Date(Number(yearSelect.value), visibleDate.getMonth(), 1);
   renderCalendar();
   persistNavigationState();
+  yearSelect.blur();
 });
 document.querySelectorAll('[data-calendar-focus]').forEach((button) => {
   button.addEventListener('click', () => setCalendarFocus(button.dataset.calendarFocus));
@@ -2418,6 +2678,7 @@ viewerImage.addEventListener('load', async () => {
   imageLoader.classList.add('is-hidden');
 });
 viewerImage.addEventListener('pointerdown', prepareViewerPressZoom);
+viewerImage.addEventListener('pointermove', moveViewerPressZoom);
 viewerImage.addEventListener('pointerup', resetViewerPressZoom);
 viewerImage.addEventListener('pointercancel', resetViewerPressZoom);
 viewerImage.addEventListener('lostpointercapture', resetViewerPressZoom);
@@ -2482,8 +2743,64 @@ window.addEventListener('storage', (event) => {
   }
 });
 
+window.addEventListener('dragenter', handlePhotoDragEnter);
+window.addEventListener('dragover', handlePhotoDragOver);
+window.addEventListener('dragleave', handlePhotoDragLeave);
+window.addEventListener('drop', handlePhotoDrop);
+window.addEventListener('dragend', resetPhotoDragState);
+window.addEventListener('blur', resetPhotoDragState);
+photoImportClose.addEventListener('click', closePhotoImportDialog);
+photoImportCancel.addEventListener('click', closePhotoImportDialog);
+photoImportDialog.addEventListener('cancel', (event) => {
+  if (photoImportInProgress) {
+    event.preventDefault();
+    return;
+  }
+  closePhotoImportDialog();
+});
+photoImportForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (!desktopBridge || photoImportInProgress || !pendingPhotoImportPaths.length) return;
+  if (!photoImportForm.reportValidity()) return;
+
+  photoImportInProgress = true;
+  photoImportSuggestionSequence += 1;
+  photoImportSubmit.disabled = true;
+  photoImportCancel.disabled = true;
+  photoImportClose.disabled = true;
+  photoImportSubmit.textContent = 'Сохраняем…';
+  photoImportError.hidden = true;
+  let reloadAfterImport = false;
+  try {
+    const result = await desktopBridge.importPhotos(pendingPhotoImportPaths, photoImportDate.value);
+    if (result.warning) {
+      pendingPhotoImportPaths = [];
+      photoImportError.textContent = `Фотографии сохранены, но не добавлены в календарь: ${result.warning}`;
+      photoImportError.hidden = false;
+      photoImportSubmit.textContent = 'Файлы сохранены';
+    } else {
+      reloadAfterImport = true;
+    }
+  } catch (error) {
+    photoImportError.textContent = `Не удалось сохранить фотографии: ${error.message}`;
+    photoImportError.hidden = false;
+    photoImportSubmit.textContent = 'Повторить';
+  } finally {
+    photoImportInProgress = false;
+    photoImportSubmit.disabled = pendingPhotoImportPaths.length === 0;
+    photoImportCancel.disabled = false;
+    photoImportClose.disabled = false;
+  }
+
+  if (reloadAfterImport) {
+    archiveReloadPending = false;
+    closePhotoImportDialog();
+    window.location.reload();
+  }
+});
+
 archiveSettingsButton.addEventListener('click', () => showArchiveSetup('settings'));
-backgroundOperationClose.addEventListener('click', hideBackgroundOperation);
+backgroundOperationClose.addEventListener('click', dismissBackgroundOperation);
 archiveSetupClose.addEventListener('click', () => archiveSetupDialog.close());
 archiveSetupDialog.addEventListener('cancel', (event) => {
   if (archiveSetupDialog.dataset.mode === 'welcome') event.preventDefault();
@@ -2545,6 +2862,10 @@ async function selectArchiveSource(action, activeButton) {
       archiveSetupError.hidden = false;
       return;
     }
+    if (operationNeedsAcknowledgement()) {
+      archiveReloadPending = true;
+      return;
+    }
     window.location.reload();
   } catch (error) {
     archiveSetupError.textContent = `Не удалось создать индекс: ${error.message}`;
@@ -2554,7 +2875,7 @@ async function selectArchiveSource(action, activeButton) {
     archiveChooseButton.disabled = false;
     archiveComputerButton.disabled = false;
     activeLabel.textContent = previousLabel;
-    if (archiveReloadPending) {
+    if (archiveReloadPending && !operationNeedsAcknowledgement()) {
       archiveReloadPending = false;
       clearTimeout(archiveReloadTimer);
       archiveReloadTimer = setTimeout(() => window.location.reload(), 0);

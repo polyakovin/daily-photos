@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('photoDayDesktop', {
   platform: process.platform,
@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld('photoDayDesktop', {
   scanPhotoLocations: () => ipcRenderer.invoke('archive:scan-photo-locations'),
   setArchiveConversion: (enabled) => ipcRenderer.invoke('archive:set-convert-images', enabled),
   revealArchiveDirectory: () => ipcRenderer.invoke('archive:reveal-directory'),
+  getPathForFile: (file) => webUtils.getPathForFile(file),
+  suggestPhotoDate: (filePaths) => ipcRenderer.invoke('archive:suggest-photo-date', filePaths),
+  importPhotos: (filePaths, date) => ipcRenderer.invoke('archive:import-photos', filePaths, date),
   getBirthDate: () => ipcRenderer.invoke('profile:get-birth-date'),
   setBirthDate: (value) => ipcRenderer.invoke('profile:set-birth-date', value),
   getNavigationState: () => ipcRenderer.invoke('ui:get-navigation-state'),

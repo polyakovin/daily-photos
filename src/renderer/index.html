@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Фото дня — календарь</title>
     <script src="/theme.js?v=1"></script>
-    <link rel="stylesheet" href="/styles.css?v=87" />
+    <link rel="stylesheet" href="/styles.css?v=88" />
   </head>
   <body>
     <main class="shell">
@@ -186,7 +186,7 @@
       </footer>
     </main>
 
-    <aside class="background-operation-tooltip" id="backgroundOperationTooltip" role="status" aria-live="polite" aria-atomic="true" hidden>
+    <aside class="background-operation-tooltip" id="backgroundOperationTooltip" role="status" aria-live="polite" aria-atomic="false" hidden>
       <span class="background-operation-icon" aria-hidden="true"><i></i></span>
       <div class="background-operation-copy">
         <div class="background-operation-heading">
@@ -197,9 +197,42 @@
         <div class="background-operation-progress" id="backgroundOperationProgress" role="progressbar" aria-label="Прогресс фоновой операции" aria-valuemin="0" aria-valuemax="100">
           <i id="backgroundOperationProgressBar"></i>
         </div>
+        <details class="operation-file-log" id="backgroundOperationLog" hidden>
+          <summary>Обработанные файлы</summary>
+          <ul></ul>
+          <pre hidden></pre>
+        </details>
       </div>
       <button class="background-operation-close" id="backgroundOperationClose" type="button" aria-label="Скрыть статус">×</button>
     </aside>
+
+    <div class="photo-drop-overlay electron-only" id="photoDropOverlay" aria-hidden="true">
+      <div class="photo-drop-card">
+        <span class="photo-drop-icon" aria-hidden="true">+</span>
+        <strong>Добавить в фотоархив</strong>
+        <small>Отпустите фотографии, затем выберите дату</small>
+      </div>
+    </div>
+
+    <dialog class="photo-import-dialog" id="photoImportDialog" aria-labelledby="photoImportTitle">
+      <form class="photo-import-card" id="photoImportForm">
+        <button class="photo-import-close" id="photoImportClose" type="button" aria-label="Отменить добавление">×</button>
+        <span class="photo-import-mark" aria-hidden="true">+</span>
+        <p class="photo-import-kicker">Новые воспоминания</p>
+        <h1 id="photoImportTitle">Добавить фотографии</h1>
+        <p class="photo-import-summary" id="photoImportSummary"></p>
+        <label class="photo-import-date-field" for="photoImportDate">
+          <span>Дата фотографии</span>
+          <input id="photoImportDate" type="date" required />
+          <small id="photoImportDateHint">Предлагаем дату съёмки из EXIF, если она указана</small>
+        </label>
+        <p class="photo-import-error" id="photoImportError" role="alert" hidden></p>
+        <div class="photo-import-actions">
+          <button class="photo-import-cancel" id="photoImportCancel" type="button">Отмена</button>
+          <button class="photo-import-submit" id="photoImportSubmit" type="submit">Сохранить в папку</button>
+        </div>
+      </form>
+    </dialog>
 
     <dialog class="archive-setup" id="archiveSetupDialog" aria-labelledby="archiveSetupTitle">
       <div class="archive-setup-card">
@@ -265,6 +298,11 @@
             <i id="archiveIndexBarFill"></i>
           </div>
           <small id="archiveIndexEta">Оцениваем время завершения…</small>
+          <details class="operation-file-log" id="archiveIndexLog" hidden>
+            <summary>Обработанные файлы</summary>
+            <ul></ul>
+            <pre hidden></pre>
+          </details>
         </div>
 
         <p class="archive-setup-error" id="archiveSetupError" role="alert" hidden></p>
@@ -333,7 +371,8 @@
     </dialog>
 
     <script src="/life-range.js?v=1" defer></script>
+    <script src="/photo-import-date.js?v=1" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=68" defer></script>
+    <script src="/app.js?v=70" defer></script>
   </body>
 </html>

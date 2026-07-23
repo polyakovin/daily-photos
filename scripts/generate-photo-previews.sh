@@ -123,11 +123,12 @@ finish_progress_item() {
 
 make_preview() {
   local source="$1"
-  local relative destination temporary dimensions width height encode_status
+  local relative destination temporary decoded dimensions width height encode_status
 
   relative="${source#"$CONTENT_ROOT"/}"
   destination="$PREVIEW_ROOT/$relative"
   temporary="${destination%.webp}.tmp.$$.webp"
+  decoded="${destination%.webp}.decoded.$$.png"
 
   if [[ -s "$destination" && "$overwrite" -eq 0 && "$destination" -nt "$source" ]]; then
     ((skipped += 1))
@@ -162,13 +163,15 @@ make_preview() {
     rm -f "$temporary"
     if ! ffmpeg -hide_banner -loglevel error -y -i "$source" -frames:v 1 \
       -vf "scale='min(${size},iw)':'min(${size},ih)':force_original_aspect_ratio=decrease" \
-      -c:v libwebp -quality "$quality" -compression_level 6 "$temporary"; then
-      rm -f "$temporary"
+      -pix_fmt rgba "$decoded" \
+      || ! cwebp -quiet -q "$quality" -m 6 "$decoded" -o "$temporary"; then
+      rm -f "$decoded" "$temporary"
       printf 'Ошибка создания превью: %s\n' "$source" >&2
       ((failed += 1))
       finish_progress_item
       return
     fi
+    rm -f "$decoded"
   fi
 
   if [[ -s "$temporary" ]] && webpinfo -quiet "$temporary" >/dev/null 2>&1; then

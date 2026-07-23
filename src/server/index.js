@@ -4,6 +4,14 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { indexPhotoRoots } = require('./photo-indexer');
+const { readImportDateOverrides } = require('./import-date-overrides');
+const {
+  conversionFailureMessage,
+  displayConversionPath,
+  parseConversionProtocolLine,
+  sanitizeConversionError,
+  updateRecentFiles
+} = require('./conversion-progress');
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const RENDERER_ROOT = path.join(PROJECT_ROOT, 'src', 'renderer');
@@ -34,6 +42,7 @@ const UI_FILES = new Map([
   ['/styles.css', 'styles.css'],
   ['/theme.js', 'theme.js'],
   ['/life-range.js', 'life-range.js'],
+  ['/photo-import-date.js', 'photo-import-date.js'],
   ['/view-state.js', 'view-state.js'],
   ['/app.js', 'app.js']
 ]);
@@ -47,6 +56,8 @@ let sourceRoots = [CONTENT_ROOT];
 let archiveWatcher = null;
 let operationSequence = 0;
 let activeOperation = null;
+let lastOperationError = '';
+let lastOperationWarning = '';
 let hasLoadedIndexCache = false;
 const indexedPhotoFiles = new Map();
 const indexedPreviewJobs = new Map();
@@ -228,6 +239,8 @@ function notifyEvent(name, value) {
 }
 
 function startOperation(title, detail, progress = 0) {
+  lastOperationError = '';
+  lastOperationWarning = '';
   activeOperation = {
     id: `${Date.now()}-${operationSequence += 1}`,
     status: 'running',
@@ -250,11 +263,13 @@ function updateOperation(id, patch) {
   notifyEvent('background-operation', activeOperation);
 }
 
-function finishOperation(id, detail, error = null) {
+function finishOperation(id, detail, error = null, warning = false) {
   if (!activeOperation || activeOperation.id !== id) return;
+  lastOperationError = error || '';
+  lastOperationWarning = warning ? detail : '';
   activeOperation = {
     ...activeOperation,
-    status: error ? 'error' : 'success',
+    status: error ? 'error' : warning ? 'warning' : 'success',
     detail: error || detail,
     progress: error ? activeOperation.progress : 100,
     completed: error ? activeOperation.completed : activeOperation.total,
@@ -363,8 +378,10 @@ function migrateSelectionIds(replacements) {
   }
 }
 
-function convertNewImages(onProgress = null) {
-  if (!shouldConvertImages || sourceMode !== 'folder') return Promise.resolve(true);
+function convertNewImages({ onProgress = null, onFile = null, onError = null } = {}) {
+  if (!shouldConvertImages || sourceMode !== 'folder') {
+    return Promise.resolve({ ok: true, files: [], errors: [] });
+  }
   const script = path.join(SCRIPTS_ROOT, 'images-to-webp.sh');
   const pathValue = [
     '/opt/homebrew/bin',
@@ -374,6 +391,14 @@ function convertNewImages(onProgress = null) {
 
   console.log('Поиск новых изображений...');
   return new Promise((resolve) => {
+    const files = [];
+    const errors = [];
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve({ files, errors, ...result });
+    };
     const scriptArguments = [script, '--delete-source'];
     if (shouldIndexMetadata) scriptArguments.push('--skip-previews');
     scriptArguments.push(CONTENT_ROOT);
@@ -384,33 +409,52 @@ function convertNewImages(onProgress = null) {
     });
 
     streamChildOutput(child.stdout, process.stdout, (line) => {
-      const match = line.match(/^PHOTO_DAY_PROGRESS\s+(conversion|previews)\s+(\d+)\s+(\d+)$/);
-      if (!match) return false;
-      const phase = match[1];
-      const completed = Number(match[2]);
-      const total = Number(match[3]);
-      const phaseProgress = total > 0 ? completed / total : 1;
-      const progress = phase === 'conversion'
+      const event = parseConversionProtocolLine(line);
+      if (!event) return false;
+      if (event.type === 'file') {
+        files.push(event);
+        if (files.length > 100) files.shift();
+        onFile?.(event);
+        return true;
+      }
+      const phaseProgress = event.total > 0 ? event.completed / event.total : 1;
+      const progress = event.phase === 'conversion'
         ? 8 + Math.round(phaseProgress * 50)
         : 58 + Math.round(phaseProgress * 25);
-      onProgress?.({ phase, completed, total, progress });
+      onProgress?.({ ...event, progress });
       return true;
     });
-    streamChildOutput(child.stderr, process.stderr);
+    streamChildOutput(child.stderr, process.stderr, (line) => {
+      const message = sanitizeConversionError(line);
+      if (message) {
+        errors.push(message);
+        if (errors.length > 20) errors.shift();
+        onError?.(message);
+      }
+      return false;
+    });
     child.once('error', (error) => {
-      console.error(`Не удалось запустить конвертацию: ${error.message}`);
-      resolve(false);
+      const message = `Не удалось запустить конвертацию: ${error.message}`;
+      console.error(message);
+      errors.push(message);
+      onError?.(message);
+      finish({ ok: false, exitCode: null });
     });
     child.once('close', (code) => {
       if (code !== 0) console.error(`Конвертация завершилась с кодом ${code}.`);
-      resolve(code === 0);
+      finish({ ok: code === 0, exitCode: code });
     });
   });
 }
 
 async function convertImagesForOperation(operationId) {
-  if (!shouldConvertImages || sourceMode !== 'folder') return true;
+  if (!shouldConvertImages || sourceMode !== 'folder') return { ok: true, files: [], errors: [] };
   const selectionIdReplacements = pendingSelectionIdReplacements();
+  let recentFiles = [];
+  let failedFiles = [];
+  let processedFiles = 0;
+  const processedFilePaths = new Set();
+  let conversionErrors = [];
   updateOperation(operationId, {
     title: 'Конвертируем фотографии',
     detail: 'Ищем файлы для замены на WebP',
@@ -418,18 +462,66 @@ async function convertImagesForOperation(operationId) {
     completed: null,
     total: null,
     unit: 'фото',
-    etaSeconds: null
+    etaSeconds: null,
+    files: [],
+    processedFiles: 0,
+    errors: []
   });
-  const converted = await convertNewImages(({ phase, completed, total, progress }) => {
-    updateOperation(operationId, {
-      detail: phase === 'conversion' ? 'Конвертируем и проверяем снимки' : 'Создаём превью',
-      progress,
-      completed,
-      total,
-      unit: 'фото'
-    });
+  const conversion = await convertNewImages({
+    onProgress: ({ phase, completed, total, progress }) => {
+      updateOperation(operationId, {
+        detail: phase === 'conversion' ? 'Конвертируем и проверяем снимки' : 'Создаём превью',
+        progress,
+        completed,
+        total,
+        unit: 'фото'
+      });
+    },
+    onFile: ({ status, filePath }) => {
+      const displayPath = displayConversionPath(filePath, CONTENT_ROOT);
+      if (
+        status !== 'processing'
+        && status !== 'replaced'
+        && !processedFilePaths.has(displayPath)
+      ) {
+        processedFilePaths.add(displayPath);
+        processedFiles += 1;
+      }
+      recentFiles = updateRecentFiles(recentFiles, { path: displayPath, status });
+      if (status === 'failed') {
+        failedFiles = updateRecentFiles(failedFiles, { path: displayPath, status }, 20);
+      }
+      const visibleFiles = [
+        ...failedFiles,
+        ...recentFiles.filter((file) => !failedFiles.some((failedFile) => failedFile.path === file.path))
+      ];
+      updateOperation(operationId, {
+        detail: status === 'processing' ? `Обрабатываем: ${displayPath}` : `Обработан: ${displayPath}`,
+        files: visibleFiles,
+        processedFiles
+      });
+    },
+    onError: (message) => {
+      conversionErrors = [...conversionErrors, message].slice(-8);
+      updateOperation(operationId, { errors: conversionErrors });
+    }
   });
-  return converted && migrateSelectionIds(selectionIdReplacements);
+  const migrated = migrateSelectionIds(selectionIdReplacements);
+  if (!migrated) {
+    conversion.errors.push('Не удалось обновить сохранённый выбор фотографий после конвертации');
+  }
+  const visibleFiles = [
+    ...failedFiles,
+    ...recentFiles.filter((file) => !failedFiles.some((failedFile) => failedFile.path === file.path))
+  ];
+  const ok = conversion.ok && migrated;
+  return {
+    ...conversion,
+    ok,
+    recoverable: !ok && processedFiles > 0 && migrated,
+    files: visibleFiles,
+    processedFiles
+  };
 }
 
 function dateFromPath(relativePath) {
@@ -586,8 +678,18 @@ function loadIndexCache() {
 }
 
 async function indexMetadataPhotos(operationId) {
+  let dateOverrides = new Map();
+  if (sourceMode === 'folder') {
+    try {
+      dateOverrides = readImportDateOverrides(CONTENT_ROOT);
+    } catch (error) {
+      console.error(`Не удалось прочитать даты импортированных фотографий: ${error.message}`);
+    }
+  }
   const records = await indexPhotoRoots({
     roots: sourceRoots,
+    dateOverrides,
+    overrideRoot: sourceMode === 'folder' ? CONTENT_ROOT : null,
     onProgress: (progress) => updateOperation(operationId, progress)
   });
   updateOperation(operationId, {
@@ -819,8 +921,10 @@ async function refreshArchive(operationId = null) {
 
   try {
     if (shouldIndexMetadata) {
-      if (!await convertImagesForOperation(currentOperationId)) {
-        const message = 'Не удалось конвертировать все снимки; непроверенные оригиналы сохранены';
+      const conversion = await convertImagesForOperation(currentOperationId);
+      const conversionWarning = conversion.ok ? '' : conversionFailureMessage(conversion);
+      if (!conversion.ok && !conversion.recoverable) {
+        const message = conversionWarning;
         finishOperation(currentOperationId, '', message);
         return false;
       }
@@ -835,9 +939,12 @@ async function refreshArchive(operationId = null) {
       });
       await indexMetadataPhotos(currentOperationId);
       const archiveChanged = archiveSignature(photos, highlights, diary) !== previousSignature;
+      const readyDetail = `Готово: ${photos.length.toLocaleString('ru-RU')} фото по датам съёмки`;
       finishOperation(
         currentOperationId,
-        `Готово: ${photos.length.toLocaleString('ru-RU')} фото по датам съёмки`
+        conversionWarning ? `${readyDetail}. ${conversionWarning}` : readyDetail,
+        null,
+        Boolean(conversionWarning)
       );
       if (archiveChanged) notifyArchiveUpdated();
       return true;
@@ -849,9 +956,10 @@ async function refreshArchive(operationId = null) {
       completed: null,
       total: null
     });
-    const converted = await convertImagesForOperation(currentOperationId);
-    if (!converted) {
-      const message = 'Не удалось обработать новые снимки';
+    const conversion = await convertImagesForOperation(currentOperationId);
+    const conversionWarning = conversion.ok ? '' : conversionFailureMessage(conversion);
+    if (!conversion.ok && !conversion.recoverable) {
+      const message = conversionWarning;
       console.error('Архив не обновлён: исходники сохранены для повторной попытки.');
       finishOperation(currentOperationId, '', message);
       return false;
@@ -874,11 +982,14 @@ async function refreshArchive(operationId = null) {
     diary = nextDiary;
 
     const archiveChanged = archiveSignature(photos, highlights, diary) !== previousSignature;
+    const readyDetail = archiveChanged
+      ? `Готово: ${photos.length.toLocaleString('ru-RU')} фото, ${diary.length.toLocaleString('ru-RU')} записей`
+      : 'Архив уже актуален';
     finishOperation(
       currentOperationId,
-      archiveChanged
-        ? `Готово: ${photos.length.toLocaleString('ru-RU')} фото, ${diary.length.toLocaleString('ru-RU')} записей`
-        : 'Архив уже актуален'
+      conversionWarning ? `${readyDetail}. ${conversionWarning}` : readyDetail,
+      null,
+      Boolean(conversionWarning)
     );
     if (archiveChanged) {
       console.log(`Архив обновлён. Фотографий: ${photos.length}, записей: ${diary.length}`);
@@ -983,23 +1094,33 @@ async function switchContentSource({ mode = 'folder', roots = [], convertImages 
     highlightSelections = readHighlightSelections();
     blurDates = readBlurDates();
     const previousSignature = archiveSignature(photos, highlights, diary);
+    let conversionWarning = '';
     if (shouldIndexMetadata) {
-      if (!await convertImagesForOperation(operationId)) {
-        throw new Error('Не удалось конвертировать все снимки; непроверенные оригиналы сохранены');
+      const conversion = await convertImagesForOperation(operationId);
+      if (!conversion.ok && !conversion.recoverable) {
+        throw new Error(conversionFailureMessage(conversion));
       }
+      if (!conversion.ok) conversionWarning = conversionFailureMessage(conversion);
       await indexMetadataPhotos(operationId);
     } else {
       updateOperation(operationId, { detail: 'Читаем содержимое папки', progress: 38 });
-      if (!await convertImagesForOperation(operationId)) throw new Error('Не удалось обработать новые изображения');
+      const conversion = await convertImagesForOperation(operationId);
+      if (!conversion.ok && !conversion.recoverable) {
+        throw new Error(conversionFailureMessage(conversion));
+      }
+      if (!conversion.ok) conversionWarning = conversionFailureMessage(conversion);
       updateOperation(operationId, { detail: 'Собираем календарь', progress: 86, completed: null, total: null });
       await new Promise((resolve) => setImmediate(resolve));
       loadArchive();
     }
     archiveWatcher = watchArchive();
     const changed = archiveSignature(photos, highlights, diary) !== previousSignature;
+    const readyDetail = `Готово: ${photos.length.toLocaleString('ru-RU')} фото, ${diary.length.toLocaleString('ru-RU')} записей`;
     finishOperation(
       operationId,
-      `Готово: ${photos.length.toLocaleString('ru-RU')} фото, ${diary.length.toLocaleString('ru-RU')} записей`
+      conversionWarning ? `${readyDetail}. ${conversionWarning}` : readyDetail,
+      null,
+      Boolean(conversionWarning)
     );
     if (changed) notifyArchiveUpdated();
   } catch (error) {
@@ -1460,9 +1581,11 @@ async function startPhotoDayServer(options = {}) {
     }
     diary = sourceMode === 'folder' ? scanDiary() : [];
   } else {
-    if (!await convertImagesForOperation(null)) {
-      throw new Error('Сервер не запущен: проверьте ошибку конвертации.');
+    const conversion = await convertImagesForOperation(null);
+    if (!conversion.ok && !conversion.recoverable) {
+      throw new Error(`Сервер не запущен: ${conversionFailureMessage(conversion)}`);
     }
+    if (!conversion.ok) console.error(`Конвертация завершена с предупреждением: ${conversionFailureMessage(conversion)}`);
     loadArchive();
   }
 
@@ -1490,6 +1613,8 @@ async function startPhotoDayServer(options = {}) {
     get contentRoot() { return CONTENT_ROOT; },
     get hasCachedIndex() { return hasLoadedIndexCache; },
     get convertsImages() { return shouldConvertImages; },
+    get lastOperationError() { return lastOperationError; },
+    get lastOperationWarning() { return lastOperationWarning; },
     setContentRoot: switchArchiveRoot,
     setContentSource: switchContentSource,
     setConvertImages,
