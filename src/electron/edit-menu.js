@@ -46,11 +46,19 @@ function contextMenuTemplate(params, actions) {
     ]);
   }
 
+  const imageItems = [];
   if (params.mediaType === 'image' && params.hasImageContents) {
-    appendMenuSection(template, [
+    imageItems.push(
       { label: 'Копировать изображение', click: () => actions.copyImage(params.x, params.y) }
-    ]);
+    );
   }
+  if (params.canRevealPhoto) {
+    imageItems.push({
+      label: params.revealPhotoLabel || 'Показать в папке',
+      click: () => actions.revealPhoto()
+    });
+  }
+  appendMenuSection(template, imageItems);
 
   if (/^https?:\/\//i.test(params.linkURL || '')) {
     appendMenuSection(template, [

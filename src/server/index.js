@@ -1163,6 +1163,17 @@ function setConvertImages(enabled) {
   return shouldConvertImages;
 }
 
+function getPhotoFilePath(id) {
+  if (typeof id !== 'string' || !/^[a-f0-9]{32}$/.test(id)) return '';
+  const indexedPhoto = indexedPhotoFiles.get(id);
+  if (!indexedPhoto || !IMAGE_RE.test(indexedPhoto.filePath)) return '';
+  try {
+    return fs.statSync(indexedPhoto.filePath).isFile() ? indexedPhoto.filePath : '';
+  } catch {
+    return '';
+  }
+}
+
 function sendFile(response, filePath, { cacheControl = 'no-cache' } = {}) {
   const extension = path.extname(filePath).toLowerCase();
   const types = {
@@ -1618,6 +1629,7 @@ async function startPhotoDayServer(options = {}) {
     setContentRoot: switchArchiveRoot,
     setContentSource: switchContentSource,
     setConvertImages,
+    getPhotoFilePath,
     reindex: () => refreshArchive(),
     close: () => new Promise((resolve, reject) => {
       clearInterval(keepAliveTimer);

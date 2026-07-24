@@ -26,6 +26,7 @@ let birthDate = '';
 let lastUpdateCheckAt = 0;
 let navigationState = null;
 let updateManager = null;
+let viewerPhotoId = '';
 
 function settingsFile() {
   return path.join(app.getPath('userData'), SETTINGS_FILE_NAME);
@@ -289,6 +290,12 @@ async function suggestDroppedPhotoDate(filePaths) {
 }
 
 function installIpcHandlers() {
+  ipcMain.on('viewer:set-photo-context', (event, photoId) => {
+    if (event.sender !== mainWindow?.webContents) return;
+    viewerPhotoId = typeof photoId === 'string' && /^[a-f0-9]{32}$/.test(photoId)
+      ? photoId
+      : '';
+  });
   ipcMain.handle('archive:get-state', () => archiveState());
   ipcMain.handle('archive:choose-directory', chooseArchiveDirectory);
   ipcMain.handle('archive:scan-photo-locations', scanPhotoLocations);
@@ -405,14 +412,31 @@ async function createWindow() {
     return { action: 'deny' };
   });
   mainWindow.webContents.on('context-menu', (_event, params) => {
-    const menu = Menu.buildFromTemplate(contextMenuTemplate(params, {
+    let clickedPhotoId = '';
+    try {
+      const sourceUrl = new URL(params.srcURL);
+      if (sourceUrl.origin === new URL(photoDayServer.url).origin) {
+        clickedPhotoId = sourceUrl.pathname.match(/^\/indexed-photo\/([a-f0-9]{32})$/)?.[1] || '';
+      }
+    } catch {
+      // Контекстное меню могло быть открыто не на изображении.
+    }
+    const photoPath = clickedPhotoId && clickedPhotoId === viewerPhotoId
+      ? photoDayServer.getPhotoFilePath(clickedPhotoId)
+      : '';
+    const menu = Menu.buildFromTemplate(contextMenuTemplate({
+      ...params,
+      canRevealPhoto: Boolean(photoPath),
+      revealPhotoLabel: process.platform === 'darwin' ? 'Показать в Finder' : 'Показать в папке'
+    }, {
       copyImage: (x, y) => mainWindow?.webContents.copyImageAt(x, y),
       copyLink: (url) => clipboard.writeText(url),
       openLink: (url) => {
         void shell.openExternal(url).catch((error) => {
           console.error(`Не удалось открыть ссылку: ${error.message}`);
         });
-      }
+      },
+      revealPhoto: () => shell.showItemInFolder(photoPath)
     }));
     menu.popup({
       window: mainWindow,
@@ -420,6 +444,7 @@ async function createWindow() {
       sourceType: params.menuSourceType
     });
   });
+  mainWindow.webContents.on('did-start-navigation', () => { viewerPhotoId = ''; });
   mainWindow.webContents.on('will-navigate', (event, url) => {
     try {
       if (new URL(url).origin !== new URL(photoDayServer.url).origin) event.preventDefault();

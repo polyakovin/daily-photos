@@ -2321,6 +2321,7 @@ function updateViewer() {
   const date = parseDate(photo.date);
   const diary = diaryByDate.get(photo.date);
   const hasPhoto = Boolean(photo.src);
+  desktopBridge?.setViewerPhotoContext?.(hasPhoto ? photo.id : null);
   resetViewerPressZoom();
   viewerPanel.classList.toggle('has-diary', Boolean(diary));
   viewerPanel.classList.toggle('is-diary-only', !hasPhoto);
@@ -2684,10 +2685,14 @@ viewerImage.addEventListener('pointercancel', resetViewerPressZoom);
 viewerImage.addEventListener('lostpointercapture', resetViewerPressZoom);
 viewerImage.addEventListener('dragstart', (event) => event.preventDefault());
 viewer.addEventListener('close', () => {
+  desktopBridge?.setViewerPhotoContext?.(null);
   resetViewerPressZoom();
   persistNavigationState();
 });
-window.addEventListener('beforeunload', () => persistNavigationState({ desktopDelay: 0 }));
+window.addEventListener('beforeunload', () => {
+  desktopBridge?.setViewerPhotoContext?.(null);
+  persistNavigationState({ desktopDelay: 0 });
+});
 document.addEventListener('keydown', (event) => {
   if (viewer.open) {
     if (event.key === 'ArrowLeft' && activePhotos.length > 1) movePhoto(-1);

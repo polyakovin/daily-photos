@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('photoDayDesktop', {
   scanPhotoLocations: () => ipcRenderer.invoke('archive:scan-photo-locations'),
   setArchiveConversion: (enabled) => ipcRenderer.invoke('archive:set-convert-images', enabled),
   revealArchiveDirectory: () => ipcRenderer.invoke('archive:reveal-directory'),
+  setViewerPhotoContext: (photoId) => ipcRenderer.send('viewer:set-photo-context', photoId),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   suggestPhotoDate: (filePaths) => ipcRenderer.invoke('archive:suggest-photo-date', filePaths),
   importPhotos: (filePaths, date) => ipcRenderer.invoke('archive:import-photos', filePaths, date),
