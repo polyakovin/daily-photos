@@ -134,6 +134,36 @@ async function embeddedPhotoDate(filePath) {
   return null;
 }
 
+function normalizePhotoLocation(value) {
+  if (
+    value?.latitude === null
+    || value?.latitude === undefined
+    || value?.longitude === null
+    || value?.longitude === undefined
+  ) return null;
+  const latitude = Number(value?.latitude);
+  const longitude = Number(value?.longitude);
+  if (
+    !Number.isFinite(latitude)
+    || !Number.isFinite(longitude)
+    || latitude < -90
+    || latitude > 90
+    || longitude < -180
+    || longitude > 180
+    || (Math.abs(latitude) < 1e-9 && Math.abs(longitude) < 1e-9)
+  ) return null;
+  return { latitude, longitude };
+}
+
+async function embeddedPhotoLocation(filePath) {
+  try {
+    return normalizePhotoLocation(await exifr.gps(filePath));
+  } catch {
+    // Отсутствующий или повреждённый GPS-блок не должен мешать индексированию.
+    return null;
+  }
+}
+
 function shouldSkipDirectory(parent, entryName, sourceRoot) {
   const normalizedEntryName = entryName.toLowerCase();
   if (entryName.startsWith('.') || IGNORED_DIRECTORY_NAMES_LOWER.has(normalizedEntryName)) return true;
@@ -253,9 +283,13 @@ async function readIndexedPhoto(filePath, { dateOverrides, overrideRoot } = {}) 
   const selectedImportDate = dateOverrides && overrideRoot
     ? importDateOverrideForFile(dateOverrides, overrideRoot, filePath)
     : null;
+  const [metadataDate, location] = await Promise.all([
+    embeddedPhotoDate(filePath),
+    embeddedPhotoLocation(filePath)
+  ]);
   const date = selectedImportDate
     || importedDateFromPath(filePath)
-    || await embeddedPhotoDate(filePath)
+    || metadataDate
     || dateFromPath(filePath)
     || dateKeyFromValue(stats.birthtime)
     || dateKeyFromValue(stats.mtime);
@@ -265,7 +299,9 @@ async function readIndexedPhoto(filePath, { dateOverrides, overrideRoot } = {}) 
     name: path.parse(filePath).name.replace(/[?_]+$/g, '') || 'Фото дня',
     filePath,
     modified: Math.trunc(stats.mtimeMs),
-    size: stats.size
+    size: stats.size,
+    latitude: location?.latitude ?? null,
+    longitude: location?.longitude ?? null
   };
 }
 
@@ -320,7 +356,9 @@ module.exports = {
   dateFromPath,
   dateKeyFromValue,
   embeddedPhotoDate,
+  embeddedPhotoLocation,
   importedDateFromPath,
   indexPhotoRoots,
+  normalizePhotoLocation,
   shouldSkipDirectory
 };

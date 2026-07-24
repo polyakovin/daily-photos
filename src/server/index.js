@@ -6,6 +6,13 @@ const { spawn } = require('child_process');
 const { indexPhotoRoots } = require('./photo-indexer');
 const { readImportDateOverrides } = require('./import-date-overrides');
 const {
+  PHOTO_ID_RE,
+  normalizeCoordinates,
+  normalizeLocationKey,
+  readPhotoLocations,
+  writePhotoLocations
+} = require('./photo-locations');
+const {
   conversionFailureMessage,
   displayConversionPath,
   parseConversionProtocolLine,
@@ -31,6 +38,7 @@ let BLUR_DATES_FILE = path.join(STATE_ROOT, 'presentation_blur_dates.json');
 let INDEX_CACHE_FILE = path.join(STATE_ROOT, 'photo-index.json');
 let PHOTO_SELECTIONS_FILE = path.join(STATE_ROOT, 'daily_photo_selections.json');
 let HIGHLIGHT_SELECTIONS_FILE = path.join(STATE_ROOT, 'period_photo_selections.json');
+let PHOTO_LOCATIONS_FILE = path.join(STATE_ROOT, 'photo_locations.json');
 const SERVER_VERSION = String(Math.trunc(fs.statSync(__filename).mtimeMs / 1000));
 const PORT = Number(process.env.PORT || 4173);
 const IMAGE_RE = /\.(?:jpe?g|png|webp|gif|avif)$/i;
@@ -42,6 +50,7 @@ const UI_FILES = new Map([
   ['/styles.css', 'styles.css'],
   ['/theme.js', 'theme.js'],
   ['/life-range.js', 'life-range.js'],
+  ['/map.js', 'map.js'],
   ['/photo-import-date.js', 'photo-import-date.js'],
   ['/view-state.js', 'view-state.js'],
   ['/app.js', 'app.js']
@@ -63,6 +72,9 @@ const indexedPhotoFiles = new Map();
 const indexedPreviewJobs = new Map();
 let photoSelections = new Map();
 let highlightSelections = { years: new Map(), months: new Map() };
+let manualPhotoLocations = new Map();
+let exifPhotoLocations = new Map();
+let photoLocationKeys = new Map();
 
 function configurePaths({
   contentRoot,
@@ -94,6 +106,10 @@ function configurePaths({
   HIGHLIGHT_SELECTIONS_FILE = path.join(
     sourceMode === 'folder' ? CONTENT_ROOT : STATE_ROOT,
     'period_photo_selections.json'
+  );
+  PHOTO_LOCATIONS_FILE = path.join(
+    sourceMode === 'folder' ? CONTENT_ROOT : STATE_ROOT,
+    'photo_locations.json'
   );
 }
 
@@ -190,6 +206,50 @@ function writeHighlightSelections() {
   const temporaryFile = `${HIGHLIGHT_SELECTIONS_FILE}.tmp`;
   fs.writeFileSync(temporaryFile, `${JSON.stringify(serializedHighlightSelections(), null, 2)}\n`, 'utf8');
   fs.renameSync(temporaryFile, HIGHLIGHT_SELECTIONS_FILE);
+}
+
+function locationStorageKey(filePath, photoId) {
+  if (sourceMode !== 'folder') return photoId;
+  const relativePath = path.relative(CONTENT_ROOT, filePath);
+  if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) return photoId;
+  return normalizeLocationKey(relativePath.split(path.sep).join('/')) || photoId;
+}
+
+function storedPhotoLocation(photoId) {
+  const locationKey = photoLocationKeys.get(photoId) || photoId;
+  return manualPhotoLocations.get(locationKey) || manualPhotoLocations.get(photoId) || null;
+}
+
+function applyLocationToPhoto(photo, exifLocation = exifPhotoLocations.get(photo.id)) {
+  delete photo.latitude;
+  delete photo.longitude;
+  delete photo.locationSource;
+  delete photo.locationPlace;
+  delete photo.locationCountry;
+  const storedLocation = storedPhotoLocation(photo.id);
+  const storedSource = storedLocation?.source || (storedLocation ? 'manual' : null);
+  const storedIsManual = storedSource === 'manual';
+  const location = storedIsManual ? storedLocation : exifLocation || storedLocation;
+  if (!location) return photo;
+  photo.latitude = location.latitude;
+  photo.longitude = location.longitude;
+  photo.locationSource = storedIsManual
+    ? 'manual'
+    : exifLocation ? 'exif' : storedSource;
+  if (location.place) photo.locationPlace = location.place;
+  if (location.country) photo.locationCountry = location.country;
+  return photo;
+}
+
+function photoLocationState(photo) {
+  return {
+    photoId: photo.id,
+    latitude: photo.latitude ?? null,
+    longitude: photo.longitude ?? null,
+    locationSource: photo.locationSource || null,
+    locationPlace: photo.locationPlace || null,
+    locationCountry: photo.locationCountry || null
+  };
 }
 
 function migrateLegacyHighlightSelections() {
@@ -552,6 +612,8 @@ function dateFromPath(relativePath) {
 
 function scanPhotos() {
   const result = [];
+  exifPhotoLocations = new Map();
+  photoLocationKeys = new Map();
 
   function walk(directory) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -568,8 +630,10 @@ function scanPhotos() {
         const relativePath = path.relative(CONTENT_ROOT, absolutePath);
         const date = dateFromPath(relativePath);
         if (!date) continue;
+        const id = indexedPhotoId(absolutePath);
+        photoLocationKeys.set(id, locationStorageKey(absolutePath, id));
         result.push({
-          id: indexedPhotoId(absolutePath),
+          id,
           date,
           name: path.parse(entry.name).name.replace(/[?_]+$/g, '') || 'Фото дня',
           src: photoSource(relativePath),
@@ -580,11 +644,13 @@ function scanPhotos() {
   }
 
   walk(CONTENT_ROOT);
-  return result.sort((a, b) => a.date.localeCompare(b.date) || a.src.localeCompare(b.src));
+  return result
+    .map((photo) => applyLocationToPhoto(photo, null))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.src.localeCompare(b.src));
 }
 
 function indexSourceSignature(mode = sourceMode, roots = sourceRoots) {
-  return JSON.stringify({ version: 1, mode, roots: roots.map((root) => path.resolve(root)).sort() });
+  return JSON.stringify({ version: 3, mode, roots: roots.map((root) => path.resolve(root)).sort() });
 }
 
 function indexedPhotoId(filePath) {
@@ -623,6 +689,8 @@ function buildIndexedHighlights(indexedPhotos) {
 
 function installIndexedRecords(records) {
   indexedPhotoFiles.clear();
+  exifPhotoLocations = new Map();
+  photoLocationKeys = new Map();
   photos = records.map((record) => {
     const filePath = path.resolve(record.filePath);
     const id = indexedPhotoId(filePath);
@@ -630,8 +698,11 @@ function installIndexedRecords(records) {
     const size = Math.max(0, Math.trunc(Number(record.size) || 0));
     const version = `${modified}-${size}`;
     indexedPhotoFiles.set(id, { filePath, version });
+    photoLocationKeys.set(id, locationStorageKey(filePath, id));
+    const exifLocation = normalizeCoordinates(record);
+    if (exifLocation) exifPhotoLocations.set(id, exifLocation);
     const source = `/indexed-photo/${id}?v=${modified}`;
-    return {
+    return applyLocationToPhoto({
       id,
       date: record.date,
       name: record.name || path.parse(filePath).name || 'Фото дня',
@@ -639,7 +710,7 @@ function installIndexedRecords(records) {
       thumbnailSrc: indexedPreviewGenerator
         ? `/indexed-preview/${id}?v=${version}`
         : source
-    };
+    }, exifLocation);
   });
   migrateLegacyHighlightSelections();
   defaultHighlights = buildIndexedHighlights(photos);
@@ -912,6 +983,33 @@ function notifyBlurDatesUpdated() {
   notifyEvent('blur-dates-updated', sortedBlurDates());
 }
 
+function updateManualPhotoLocation(photo, coordinates) {
+  const locationKey = photoLocationKeys.get(photo.id) || photo.id;
+  const affectedKeys = [...new Set([locationKey, photo.id])];
+  const previousLocations = affectedKeys.map((key) => [
+    key,
+    manualPhotoLocations.has(key),
+    manualPhotoLocations.get(key)
+  ]);
+  for (const key of affectedKeys) manualPhotoLocations.delete(key);
+  if (coordinates) {
+    manualPhotoLocations.set(locationKey, { ...coordinates, source: 'manual' });
+  }
+  try {
+    writePhotoLocations(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
+  } catch (error) {
+    for (const key of affectedKeys) manualPhotoLocations.delete(key);
+    for (const [key, existed, value] of previousLocations) {
+      if (existed) manualPhotoLocations.set(key, value);
+    }
+    throw error;
+  }
+  applyLocationToPhoto(photo);
+  const state = photoLocationState(photo);
+  notifyEvent('photo-location-updated', state);
+  return state;
+}
+
 async function refreshArchive(operationId = null) {
   if (archiveRefreshRunning) return;
   archiveRefreshRunning = true;
@@ -1076,6 +1174,9 @@ async function switchContentSource({ mode = 'folder', roots = [], convertImages 
     defaultHighlights,
     highlights,
     highlightSelections,
+    manualPhotoLocations,
+    exifPhotoLocations,
+    photoLocationKeys,
     blurDates,
     shouldConvertImages,
     diary,
@@ -1092,6 +1193,7 @@ async function switchContentSource({ mode = 'folder', roots = [], convertImages 
     });
     shouldConvertImages = mode === 'folder' && Boolean(convertImages);
     highlightSelections = readHighlightSelections();
+    manualPhotoLocations = readPhotoLocations(PHOTO_LOCATIONS_FILE);
     blurDates = readBlurDates();
     const previousSignature = archiveSignature(photos, highlights, diary);
     let conversionWarning = '';
@@ -1133,6 +1235,9 @@ async function switchContentSource({ mode = 'folder', roots = [], convertImages 
     defaultHighlights = previousState.defaultHighlights;
     highlights = previousState.highlights;
     highlightSelections = previousState.highlightSelections;
+    manualPhotoLocations = previousState.manualPhotoLocations;
+    exifPhotoLocations = previousState.exifPhotoLocations;
+    photoLocationKeys = previousState.photoLocationKeys;
     blurDates = previousState.blurDates;
     shouldConvertImages = previousState.shouldConvertImages;
     diary = previousState.diary;
@@ -1431,6 +1536,58 @@ function handleRequest(request, response) {
     return;
   }
 
+  const photoLocationMatch = requestUrl.pathname.match(/^\/api\/photo-locations\/([a-f0-9]{32})$/);
+  if (photoLocationMatch && ['PUT', 'DELETE'].includes(request.method)) {
+    const photoId = photoLocationMatch[1];
+    const photo = PHOTO_ID_RE.test(photoId) && photos.find((candidate) => candidate.id === photoId);
+    if (!photo) {
+      sendJson(response, 404, { error: 'Фотография не найдена' });
+      return;
+    }
+
+    if (request.method === 'DELETE') {
+      try {
+        sendJson(response, 200, updateManualPhotoLocation(photo, null));
+      } catch (error) {
+        console.error(`Не удалось удалить геометку: ${error.message}`);
+        sendJson(response, 500, { error: 'Не удалось сохранить геометку' });
+      }
+      return;
+    }
+
+    let body = '';
+    let bodyTooLarge = false;
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      if (bodyTooLarge) return;
+      body += chunk;
+      if (body.length > 1024) bodyTooLarge = true;
+    });
+    request.on('end', () => {
+      if (bodyTooLarge) {
+        sendJson(response, 413, { error: 'Слишком большой запрос' });
+        return;
+      }
+      let coordinates;
+      try {
+        coordinates = normalizeCoordinates(JSON.parse(body));
+      } catch {
+        coordinates = null;
+      }
+      if (!coordinates) {
+        sendJson(response, 400, { error: 'Укажите корректные широту и долготу' });
+        return;
+      }
+      try {
+        sendJson(response, 200, updateManualPhotoLocation(photo, coordinates));
+      } catch (error) {
+        console.error(`Не удалось сохранить геометку: ${error.message}`);
+        sendJson(response, 500, { error: 'Не удалось сохранить геометку' });
+      }
+    });
+    return;
+  }
+
   if (requestUrl.pathname === '/api/blur-dates' && request.method === 'GET') {
     sendJson(response, 200, sortedBlurDates());
     return;
@@ -1580,6 +1737,7 @@ async function startPhotoDayServer(options = {}) {
   fs.mkdirSync(STATE_ROOT, { recursive: true });
 
   highlightSelections = readHighlightSelections();
+  manualPhotoLocations = readPhotoLocations(PHOTO_LOCATIONS_FILE);
   blurDates = readBlurDates();
   photoSelections = readPhotoSelections();
   hasLoadedIndexCache = false;
@@ -1589,6 +1747,7 @@ async function startPhotoDayServer(options = {}) {
       defaultHighlights = { years: [], months: [] };
       highlights = { years: [], months: [] };
       indexedPhotoFiles.clear();
+      photoLocationKeys.clear();
     }
     diary = sourceMode === 'folder' ? scanDiary() : [];
   } else {

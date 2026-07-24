@@ -41,4 +41,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.equal(importDateResponse.status, 200);
   assert.match(importDateResponse.headers.get('content-type'), /^text\/javascript/);
   assert.match(await importDateResponse.text(), /suggestCalendarImportDate/);
+
+  const mapResponse = await fetch(`${server.url}/map.js`);
+  assert.equal(mapResponse.status, 200);
+  assert.match(mapResponse.headers.get('content-type'), /^text\/javascript/);
+  assert.match(await mapResponse.text(), /InteractiveMap/);
 });

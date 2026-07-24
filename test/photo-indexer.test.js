@@ -5,6 +5,7 @@ const {
   dateKeyFromValue,
   importedDateFromPath,
   indexPhotoRoots,
+  normalizePhotoLocation,
   shouldSkipDirectory
 } = require('../src/server/photo-indexer');
 const fs = require('node:fs');
@@ -16,6 +17,16 @@ test('reads dates from EXIF and ISO strings without truncating two-digit days', 
   assert.equal(dateKeyFromValue('2019:08:07 12:30:00'), '2019-08-07');
   assert.equal(dateKeyFromValue('2020-02-29T10:00:00+03:00'), '2020-02-29');
   assert.equal(dateKeyFromValue('2021:02:29 10:00:00'), null);
+});
+
+test('normalizes valid EXIF GPS coordinates and rejects impossible values', () => {
+  assert.deepEqual(normalizePhotoLocation({ latitude: 55.7558, longitude: 37.6173 }), {
+    latitude: 55.7558,
+    longitude: 37.6173
+  });
+  assert.equal(normalizePhotoLocation({ latitude: 0, longitude: 0 }), null);
+  assert.equal(normalizePhotoLocation({ latitude: 91, longitude: 37 }), null);
+  assert.equal(normalizePhotoLocation({ latitude: 55, longitude: 'unknown' }), null);
 });
 
 test('keeps compatibility with supported archive paths', () => {

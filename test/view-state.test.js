@@ -55,3 +55,7 @@ test('view state storage tolerates corrupt data and keeps the newest copy', () =
   assert.equal(JSON.parse(values.get(STORAGE_KEY)).view, 'life');
   assert.equal(newestViewState(local, desktop).view, 'random');
 });
+
+test('view state recognizes the map section', () => {
+  assert.equal(normalizeViewState({ view: 'map' }).view, 'map');
+});

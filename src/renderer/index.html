@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#163a30" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Фото дня — календарь</title>
     <script src="/theme.js?v=1"></script>
     <link rel="stylesheet" href="/styles.css?v=88" />
@@ -22,6 +22,7 @@
         <nav class="view-switcher" aria-label="Режим отображения">
           <button class="view-switch is-active" type="button" data-view="calendar" aria-pressed="true">Календарь</button>
           <button class="view-switch" type="button" data-view="timeline" aria-pressed="false">Таймлайн</button>
+          <button class="view-switch" type="button" data-view="map" aria-pressed="false">Карта</button>
           <button class="view-switch" type="button" data-view="life" aria-pressed="false">Жизнь</button>
           <button class="view-switch" type="button" data-view="random" aria-pressed="false">Случайное</button>
         </nav>
@@ -94,6 +95,61 @@
           <span>← прошлое</span>
           <span id="timelineHint">Колёсико, свайп или ползунок</span>
           <span>будущее →</span>
+        </div>
+      </section>
+
+      <section class="map-card view-panel" id="mapView" aria-label="Карта посещённых мест" hidden>
+        <div class="map-toolbar">
+          <div>
+            <p class="toolbar-kicker">География воспоминаний</p>
+            <h2>Посещённые места</h2>
+          </div>
+          <div class="map-toolbar-actions">
+            <div class="map-summary" id="mapSummary" aria-live="polite"></div>
+            <button class="map-assign-button" id="mapAssignButton" type="button">Расставить без места</button>
+          </div>
+        </div>
+        <div class="map-stage-wrap">
+          <div class="photo-map" id="photoMap" role="application" aria-label="Интерактивная карта фотографий"></div>
+          <div class="map-controls" aria-label="Масштаб карты">
+            <button id="mapZoomIn" type="button" aria-label="Приблизить карту">+</button>
+            <button id="mapZoomOut" type="button" aria-label="Отдалить карту">−</button>
+          </div>
+          <a class="map-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
+          <div class="map-empty" id="mapEmpty" hidden>
+            <strong>На карте пока тихо</strong>
+            <span>GPS-координаты появятся из EXIF или файла архива, а остальные места можно отметить вручную.</span>
+          </div>
+          <aside class="map-assignment" id="mapAssignment" hidden>
+            <img id="mapAssignmentImage" alt="" />
+            <div>
+              <small id="mapAssignmentProgress"></small>
+              <strong id="mapAssignmentDate"></strong>
+              <span>Нажмите на место съёмки на карте</span>
+            </div>
+            <div class="map-assignment-actions">
+              <button id="mapAssignmentSkip" type="button">Пропустить</button>
+              <button id="mapAssignmentDone" type="button">Готово</button>
+            </div>
+          </aside>
+          <article class="map-photo-card" id="mapPhotoCard" hidden>
+            <button class="map-photo-close" id="mapPhotoClose" type="button" aria-label="Закрыть карточку">×</button>
+            <img id="mapPhotoImage" alt="" />
+            <div class="map-photo-copy">
+              <small id="mapPhotoPosition"></small>
+              <strong id="mapPhotoDate"></strong>
+              <span id="mapPhotoSource"></span>
+            </div>
+            <div class="map-photo-actions">
+              <button id="mapPhotoPrevious" type="button" aria-label="Предыдущая фотография">←</button>
+              <button id="mapPhotoOpen" type="button">Открыть</button>
+              <button id="mapPhotoNext" type="button" aria-label="Следующая фотография">→</button>
+            </div>
+          </article>
+        </div>
+        <div class="map-footer">
+          <span id="mapStats">Геометки хранятся вместе с выбранной папкой архива</span>
+          <span>Перетаскивайте карту · масштабируйте колёсиком</span>
         </div>
       </section>
 
@@ -320,6 +376,28 @@
           <img id="viewerImage" alt="" />
           <div class="image-loader" id="imageLoader">Проявляем снимок…</div>
         </div>
+        <section class="viewer-location-editor" id="viewerLocationEditor" hidden aria-label="Место съёмки">
+          <div class="viewer-location-heading">
+            <div>
+              <small>Место съёмки</small>
+              <strong id="viewerLocationTitle">Укажите точку на карте</strong>
+            </div>
+            <button id="viewerLocationClose" type="button" aria-label="Закрыть редактор места">×</button>
+          </div>
+          <div class="viewer-location-map" id="viewerLocationMap" role="application" aria-label="Выбор места фотографии"></div>
+          <div class="viewer-location-map-controls" aria-label="Масштаб карты">
+            <button id="viewerLocationZoomIn" type="button" aria-label="Приблизить карту">+</button>
+            <button id="viewerLocationZoomOut" type="button" aria-label="Отдалить карту">−</button>
+          </div>
+          <a class="viewer-location-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
+          <footer class="viewer-location-footer">
+            <span id="viewerLocationStatus" aria-live="polite">Нажмите на карте, чтобы поставить метку</span>
+            <div>
+              <button class="viewer-location-remove" id="viewerLocationRemove" type="button">Удалить метку</button>
+              <button class="viewer-location-save" id="viewerLocationSave" type="button" disabled>Сохранить</button>
+            </div>
+          </footer>
+        </section>
         <article class="viewer-diary" id="viewerDiary" hidden>
           <div class="viewer-diary-label">Запись дня</div>
           <div class="viewer-diary-content" id="viewerDiaryContent"></div>
@@ -337,6 +415,9 @@
             <h2 id="viewerDate"></h2>
           </div>
           <div class="viewer-actions">
+            <button class="viewer-location-button" id="viewerLocationButton" type="button">
+              <span aria-hidden="true">⌖</span> <span id="viewerLocationButtonLabel">Добавить место</span>
+            </button>
             <button
               class="viewer-diary-toggle"
               id="viewerDiaryToggle"
@@ -371,8 +452,9 @@
     </dialog>
 
     <script src="/life-range.js?v=1" defer></script>
+    <script src="/map.js?v=1" defer></script>
     <script src="/photo-import-date.js?v=1" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=71" defer></script>
+    <script src="/app.js?v=72" defer></script>
   </body>
 </html>

@@ -5,7 +5,7 @@
 }(typeof globalThis === 'object' ? globalThis : this, () => {
   const STORAGE_KEY = 'photo-day:view-state';
   const DATE_KEY_PATTERN = /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
-  const VIEWS = new Set(['calendar', 'timeline', 'life', 'random']);
+  const VIEWS = new Set(['calendar', 'timeline', 'map', 'life', 'random']);
   const CALENDAR_FOCUSES = new Set(['years', 'year', 'month', 'week']);
 
   function normalizeDateKey(value) {

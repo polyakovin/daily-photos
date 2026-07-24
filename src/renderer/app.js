@@ -12,6 +12,7 @@ const LIFE_BIRTH_DATE_STORAGE_KEY = 'photo-day:birth-date';
 const DATE_KEY_PATTERN = /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
 const { suggestCalendarImportDate } = window.PhotoDayImportDate;
+const { InteractiveMap, normalizeCoordinates: normalizeMapCoordinates } = window.PhotoDayMap;
 const {
   newestViewState,
   normalizeViewState,
@@ -27,6 +28,21 @@ const timelineView = document.querySelector('#timelineView');
 const timelineTrack = document.querySelector('#timelineTrack');
 const timelineScrollbar = document.querySelector('#timelineScrollbar');
 const timelineYears = document.querySelector('#timelineYears');
+const mapView = document.querySelector('#mapView');
+const photoMap = document.querySelector('#photoMap');
+const mapSummary = document.querySelector('#mapSummary');
+const mapStats = document.querySelector('#mapStats');
+const mapEmpty = document.querySelector('#mapEmpty');
+const mapAssignButton = document.querySelector('#mapAssignButton');
+const mapAssignment = document.querySelector('#mapAssignment');
+const mapAssignmentImage = document.querySelector('#mapAssignmentImage');
+const mapAssignmentProgress = document.querySelector('#mapAssignmentProgress');
+const mapAssignmentDate = document.querySelector('#mapAssignmentDate');
+const mapPhotoCard = document.querySelector('#mapPhotoCard');
+const mapPhotoImage = document.querySelector('#mapPhotoImage');
+const mapPhotoPosition = document.querySelector('#mapPhotoPosition');
+const mapPhotoDate = document.querySelector('#mapPhotoDate');
+const mapPhotoSource = document.querySelector('#mapPhotoSource');
 const lifeCanvas = document.querySelector('#lifeCanvas');
 const lifeCanvasWrap = document.querySelector('#lifeCanvasWrap');
 const lifeTooltip = document.querySelector('#lifeTooltip');
@@ -60,6 +76,14 @@ const viewerHighlightActions = document.querySelector('#viewerHighlightActions')
 const viewerMonthHighlight = document.querySelector('#viewerMonthHighlight');
 const viewerYearHighlight = document.querySelector('#viewerYearHighlight');
 const viewerHighlightStatus = document.querySelector('#viewerHighlightStatus');
+const viewerLocationButton = document.querySelector('#viewerLocationButton');
+const viewerLocationButtonLabel = document.querySelector('#viewerLocationButtonLabel');
+const viewerLocationEditor = document.querySelector('#viewerLocationEditor');
+const viewerLocationMapElement = document.querySelector('#viewerLocationMap');
+const viewerLocationTitle = document.querySelector('#viewerLocationTitle');
+const viewerLocationStatus = document.querySelector('#viewerLocationStatus');
+const viewerLocationRemove = document.querySelector('#viewerLocationRemove');
+const viewerLocationSave = document.querySelector('#viewerLocationSave');
 const desktopBridge = window.photoDayDesktop;
 const archiveSettingsButton = document.querySelector('#archiveSettingsButton');
 const archiveSettingsName = document.querySelector('#archiveSettingsName');
@@ -128,6 +152,16 @@ let timelineVirtualStart = -1;
 let timelineVirtualEnd = -1;
 let timelineRestoring = false;
 const timelineLoadedImages = new Set();
+let mapController = null;
+let mapDidFitPoints = false;
+let mapAssignmentPhotos = [];
+let mapAssignmentIndex = 0;
+let mapAssignmentSaving = false;
+let activeMapPhotos = [];
+let activeMapPhotoIndex = 0;
+let viewerLocationMap = null;
+let viewerLocationDraft = null;
+let viewerLocationSaving = false;
 let lifeStart = null;
 let lifeEnd = null;
 let lifeTotalDays = 0;
@@ -1134,8 +1168,330 @@ function setCalendarFocus(focus) {
   persistNavigationState();
 }
 
+function photoHasLocation(photo) {
+  return Boolean(normalizeMapCoordinates(photo));
+}
+
+function photoLocationLabel(photo) {
+  if (photo?.locationSource === 'manual') return 'Место указано вручную';
+  if (photo?.locationSource === 'exif') return 'Координаты из EXIF';
+  if (photo?.locationSource === 'home-office+organic-maps') {
+    return photo.locationPlace
+      ? `${photo.locationPlace} · home-office + Organic Maps`
+      : 'Данные home-office + Organic Maps';
+  }
+  if (photo?.locationSource === 'home-office') {
+    return photo.locationPlace
+      ? `${photo.locationPlace} · home-office`
+      : 'Данные home-office';
+  }
+  if (photo?.locationSource === 'organic-maps') {
+    return photo.locationPlace
+      ? `${photo.locationPlace} · Organic Maps`
+      : 'Данные Organic Maps';
+  }
+  if (photo?.locationSource === 'photo') {
+    return photo.locationPlace
+      ? `${photo.locationPlace} · распознано по фотографии`
+      : 'Место распознано по фотографии';
+  }
+  return 'Место не указано';
+}
+
+function updatePhotoLocationState(state) {
+  const photo = photos.find((candidate) => candidate.id === state?.photoId);
+  if (!photo) return null;
+  delete photo.latitude;
+  delete photo.longitude;
+  delete photo.locationSource;
+  delete photo.locationPlace;
+  delete photo.locationCountry;
+  const location = normalizeMapCoordinates(state);
+  if (location) {
+    photo.latitude = location.latitude;
+    photo.longitude = location.longitude;
+    photo.locationSource = state.locationSource || 'manual';
+    if (state.locationPlace) photo.locationPlace = state.locationPlace;
+    if (state.locationCountry) photo.locationCountry = state.locationCountry;
+  }
+  renderMapLocations();
+  if (viewer.open && activePhotos[activeIndex]?.id === photo.id) {
+    updateViewerLocationControls(photo);
+  }
+  return photo;
+}
+
+async function persistPhotoLocation(photo, location) {
+  if (!photo?.id) throw new Error('Фотография не найдена');
+  const normalizedLocation = normalizeMapCoordinates(location);
+  const response = await fetch(`/api/photo-locations/${encodeURIComponent(photo.id)}`, {
+    method: normalizedLocation ? 'PUT' : 'DELETE',
+    headers: normalizedLocation ? { 'Content-Type': 'application/json' } : undefined,
+    body: normalizedLocation ? JSON.stringify(normalizedLocation) : undefined
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(result?.error || 'Не удалось сохранить место');
+  return updatePhotoLocationState(result);
+}
+
+function locatedPhotoCount() {
+  return photos.reduce((count, photo) => count + Number(photoHasLocation(photo)), 0);
+}
+
+function distinctPlaceCount(locatedPhotos) {
+  return new Set(locatedPhotos.map((photo) => (
+    `${Number(photo.latitude).toFixed(4)}:${Number(photo.longitude).toFixed(4)}`
+  ))).size;
+}
+
+function renderMapLocations({ fit = false } = {}) {
+  const locatedPhotos = photos.filter(photoHasLocation);
+  const withoutLocation = photos.length - locatedPhotos.length;
+  const places = distinctPlaceCount(locatedPhotos);
+  const exifCount = locatedPhotos.filter((photo) => photo.locationSource === 'exif').length;
+  const manualCount = locatedPhotos.filter((photo) => photo.locationSource === 'manual').length;
+  const importedCount = locatedPhotos.length - exifCount - manualCount;
+
+  mapSummary.innerHTML = `<strong>${places.toLocaleString('ru-RU')} ${pluralize(places, ['место', 'места', 'мест'])}</strong>${locatedPhotos.length.toLocaleString('ru-RU')} ${pluralize(locatedPhotos.length, ['фотография', 'фотографии', 'фотографий'])}`;
+  mapStats.textContent = `${exifCount.toLocaleString('ru-RU')} из EXIF · ${importedCount.toLocaleString('ru-RU')} из архива мест · ${manualCount.toLocaleString('ru-RU')} вручную · ${withoutLocation.toLocaleString('ru-RU')} без места`;
+  mapAssignButton.disabled = withoutLocation === 0
+    || mapAssignmentSaving
+    || Boolean(mapAssignmentPhotos.length);
+  mapAssignButton.textContent = withoutLocation
+    ? `Расставить без места · ${withoutLocation.toLocaleString('ru-RU')}`
+    : 'Все фотографии на карте';
+  mapEmpty.hidden = Boolean(locatedPhotos.length) || Boolean(mapAssignmentPhotos.length);
+  mapController?.setPoints(locatedPhotos, { fit });
+}
+
+function ensureMap() {
+  if (mapController) {
+    mapController.scheduleRender();
+    renderMapLocations();
+    return;
+  }
+  mapController = new InteractiveMap(photoMap, {
+    center: { latitude: 30, longitude: 20 },
+    zoom: 2,
+    onMapClick: (location) => {
+      if (mapAssignmentPhotos.length) {
+        void assignCurrentPhotoToLocation(location);
+      } else {
+        mapPhotoCard.hidden = true;
+      }
+    },
+    onPointClick: showMapPhotoGroup
+  });
+  renderMapLocations({ fit: !mapDidFitPoints });
+  mapDidFitPoints = true;
+}
+
+function renderMapPhotoCard() {
+  const photo = activeMapPhotos[activeMapPhotoIndex];
+  if (!photo) {
+    mapPhotoCard.hidden = true;
+    return;
+  }
+  const fallback = photo.src;
+  mapPhotoImage.src = photo.thumbnailSrc || fallback;
+  mapPhotoImage.dataset.fallbackSrc = fallback;
+  mapPhotoImage.alt = `Фото за ${formatDate(photo.date)}`;
+  mapPhotoPosition.textContent = activeMapPhotos.length > 1
+    ? `${(activeMapPhotoIndex + 1).toLocaleString('ru-RU')} из ${activeMapPhotos.length.toLocaleString('ru-RU')}`
+    : photoLocationLabel(photo);
+  mapPhotoDate.textContent = formatDate(photo.date);
+  mapPhotoSource.textContent = photoLocationLabel(photo);
+  document.querySelector('#mapPhotoPrevious').disabled = activeMapPhotos.length < 2;
+  document.querySelector('#mapPhotoNext').disabled = activeMapPhotos.length < 2;
+  mapPhotoCard.hidden = false;
+}
+
+function showMapPhotoGroup(group) {
+  activeMapPhotos = [...group].sort((a, b) => b.date.localeCompare(a.date));
+  activeMapPhotoIndex = 0;
+  renderMapPhotoCard();
+}
+
+function moveMapPhoto(amount) {
+  if (!activeMapPhotos.length) return;
+  activeMapPhotoIndex = (activeMapPhotoIndex + amount + activeMapPhotos.length) % activeMapPhotos.length;
+  renderMapPhotoCard();
+}
+
+function openCurrentMapPhoto() {
+  const photo = activeMapPhotos[activeMapPhotoIndex];
+  if (!photo) return;
+  const dayPhotos = byDate.get(photo.date) || [photo];
+  const index = Math.max(0, dayPhotos.findIndex((candidate) => candidate.id === photo.id));
+  openViewer(dayPhotos, index);
+}
+
+function renderMapAssignment() {
+  const photo = mapAssignmentPhotos[mapAssignmentIndex];
+  if (!photo) {
+    finishMapAssignment();
+    return;
+  }
+  mapAssignment.hidden = false;
+  mapAssignmentImage.src = photo.thumbnailSrc || photo.src;
+  mapAssignmentImage.alt = `Фото за ${formatDate(photo.date)}`;
+  mapAssignmentProgress.textContent = `${(mapAssignmentIndex + 1).toLocaleString('ru-RU')} из ${mapAssignmentPhotos.length.toLocaleString('ru-RU')}`;
+  mapAssignmentDate.textContent = formatDate(photo.date);
+  mapController?.setSelection(null);
+}
+
+function startMapAssignment() {
+  ensureMap();
+  mapAssignmentPhotos = photos.filter((photo) => !photoHasLocation(photo));
+  mapAssignmentIndex = 0;
+  mapPhotoCard.hidden = true;
+  if (!mapAssignmentPhotos.length) return;
+  mapAssignButton.disabled = true;
+  renderMapAssignment();
+}
+
+function finishMapAssignment() {
+  mapAssignmentPhotos = [];
+  mapAssignmentIndex = 0;
+  mapAssignmentSaving = false;
+  mapAssignment.hidden = true;
+  mapController?.setSelection(null);
+  renderMapLocations();
+}
+
+function skipMapAssignmentPhoto() {
+  if (mapAssignmentSaving) return;
+  mapAssignmentIndex += 1;
+  renderMapAssignment();
+}
+
+async function assignCurrentPhotoToLocation(location) {
+  const photo = mapAssignmentPhotos[mapAssignmentIndex];
+  if (!photo || mapAssignmentSaving) return;
+  mapAssignmentSaving = true;
+  mapController?.setSelection(location);
+  mapAssignmentProgress.textContent = 'Сохраняем…';
+  try {
+    await persistPhotoLocation(photo, location);
+    mapAssignmentIndex += 1;
+    renderMapAssignment();
+  } catch (error) {
+    mapAssignmentProgress.textContent = error.message;
+  } finally {
+    mapAssignmentSaving = false;
+    renderMapLocations();
+  }
+}
+
+function updateViewerLocationControls(photo = activePhotos[activeIndex]) {
+  const hasPhoto = Boolean(photo?.src && photo?.id);
+  viewerLocationButton.hidden = !hasPhoto;
+  if (!hasPhoto) return;
+  viewerLocationButtonLabel.textContent = photoHasLocation(photo) ? 'Место' : 'Добавить место';
+  viewerLocationButton.classList.toggle('is-active', photo.locationSource === 'manual');
+}
+
+function setViewerLocationDraft(location) {
+  viewerLocationDraft = normalizeMapCoordinates(location);
+  viewerLocationMap?.setSelection(viewerLocationDraft);
+  viewerLocationSave.disabled = !viewerLocationDraft || viewerLocationSaving;
+  viewerLocationStatus.classList.remove('is-error');
+  viewerLocationStatus.textContent = viewerLocationDraft
+    ? `${viewerLocationDraft.latitude.toFixed(5)}, ${viewerLocationDraft.longitude.toFixed(5)}`
+    : 'Нажмите на карте, чтобы поставить метку';
+}
+
+function ensureViewerLocationMap() {
+  if (viewerLocationMap) {
+    viewerLocationMap.scheduleRender();
+    return;
+  }
+  viewerLocationMap = new InteractiveMap(viewerLocationMapElement, {
+    center: { latitude: 30, longitude: 20 },
+    zoom: 2,
+    onMapClick: setViewerLocationDraft
+  });
+}
+
+function openViewerLocationEditor() {
+  const photo = activePhotos[activeIndex];
+  if (!photo?.id || !photo.src) return;
+  viewerLocationEditor.hidden = false;
+  ensureViewerLocationMap();
+  const location = normalizeMapCoordinates(photo);
+  const mainView = mapController?.getCenter();
+  viewerLocationTitle.textContent = location ? photoLocationLabel(photo) : 'Укажите точку на карте';
+  viewerLocationRemove.disabled = photo.locationSource !== 'manual' || viewerLocationSaving;
+  viewerLocationRemove.textContent = photo.locationSource === 'manual'
+    ? 'Сбросить ручную метку'
+    : photo.locationSource === 'exif'
+      ? 'Метка из EXIF'
+      : photo.locationSource ? 'Автоматическая метка' : 'Метки нет';
+  setViewerLocationDraft(location);
+  requestAnimationFrame(() => {
+    viewerLocationMap.setCenter(
+      location || mainView || { latitude: 30, longitude: 20 },
+      location ? Math.max(8, mainView?.zoom || 8) : mainView?.zoom || 2
+    );
+    viewerLocationMap.scheduleRender();
+  });
+}
+
+function closeViewerLocationEditor() {
+  viewerLocationEditor.hidden = true;
+  viewerLocationDraft = null;
+  viewerLocationSaving = false;
+}
+
+async function saveViewerLocation() {
+  const photo = activePhotos[activeIndex];
+  if (!photo?.id || !viewerLocationDraft || viewerLocationSaving) return;
+  viewerLocationSaving = true;
+  viewerLocationSave.disabled = true;
+  viewerLocationRemove.disabled = true;
+  viewerLocationStatus.textContent = 'Сохраняем место…';
+  try {
+    await persistPhotoLocation(photo, viewerLocationDraft);
+    closeViewerLocationEditor();
+  } catch (error) {
+    viewerLocationStatus.textContent = error.message;
+    viewerLocationStatus.classList.add('is-error');
+  } finally {
+    viewerLocationSaving = false;
+    if (!viewerLocationEditor.hidden) {
+      viewerLocationSave.disabled = !viewerLocationDraft;
+      viewerLocationRemove.disabled = photo.locationSource !== 'manual';
+    }
+  }
+}
+
+async function removeViewerLocation() {
+  const photo = activePhotos[activeIndex];
+  if (!photo?.id || photo.locationSource !== 'manual' || viewerLocationSaving) return;
+  viewerLocationSaving = true;
+  viewerLocationSave.disabled = true;
+  viewerLocationRemove.disabled = true;
+  viewerLocationStatus.textContent = 'Сбрасываем ручную метку…';
+  try {
+    const updatedPhoto = await persistPhotoLocation(photo, null);
+    const location = normalizeMapCoordinates(updatedPhoto);
+    viewerLocationTitle.textContent = location ? photoLocationLabel(updatedPhoto) : 'Укажите точку на карте';
+    viewerLocationRemove.textContent = location ? 'Метка из EXIF' : 'Метки нет';
+    setViewerLocationDraft(location);
+    if (location) viewerLocationMap.setCenter(location, Math.max(8, viewerLocationMap.getCenter().zoom));
+  } catch (error) {
+    viewerLocationStatus.textContent = error.message;
+    viewerLocationStatus.classList.add('is-error');
+  } finally {
+    viewerLocationSaving = false;
+    viewerLocationSave.disabled = !viewerLocationDraft;
+    viewerLocationRemove.disabled = photo.locationSource !== 'manual';
+  }
+}
+
 function switchView(view, { persist = true } = {}) {
   const isTimeline = view === 'timeline';
+  const isMap = view === 'map';
   const isLife = view === 'life';
   const isRandom = view === 'random';
   if (activeView === 'timeline' && !isTimeline && timelineRendered) {
@@ -1145,8 +1501,9 @@ function switchView(view, { persist = true } = {}) {
     });
   }
   activeView = view;
-  document.querySelector('#calendarView').hidden = isTimeline || isLife || isRandom;
+  document.querySelector('#calendarView').hidden = isTimeline || isMap || isLife || isRandom;
   document.querySelector('#timelineView').hidden = !isTimeline;
+  mapView.hidden = !isMap;
   document.querySelector('#lifeView').hidden = !isLife;
   randomView.hidden = !isRandom;
   document.querySelectorAll('.view-switch').forEach((button) => {
@@ -1173,6 +1530,7 @@ function switchView(view, { persist = true } = {}) {
     });
   }
   if (isLife) requestAnimationFrame(renderLifeCanvas);
+  if (isMap) requestAnimationFrame(ensureMap);
   if (isRandom) {
     startRandomShow();
   } else {
@@ -2321,6 +2679,7 @@ function updateViewer() {
   const date = parseDate(photo.date);
   const diary = diaryByDate.get(photo.date);
   const hasPhoto = Boolean(photo.src);
+  if (!viewerLocationEditor.hidden) closeViewerLocationEditor();
   desktopBridge?.setViewerPhotoContext?.(hasPhoto ? photo.id : null);
   resetViewerPressZoom();
   viewerPanel.classList.toggle('has-diary', Boolean(diary));
@@ -2358,6 +2717,7 @@ function updateViewer() {
   viewerBlurControl.hidden = !hasPhoto;
   viewerBlurToggle.checked = hasPhoto && blurDates.has(photo.date);
   viewerBlurToggle.disabled = !hasPhoto;
+  updateViewerLocationControls(photo);
   updateViewerHighlightControls(photo);
   renderViewerAlternatives(photo);
   if (viewer.open) persistNavigationState();
@@ -2486,6 +2846,13 @@ function watchArchiveUpdates() {
       // Следующее изменение выбора придёт новым событием.
     }
   });
+  events.addEventListener('photo-location-updated', (event) => {
+    try {
+      updatePhotoLocationState(JSON.parse(event.data));
+    } catch {
+      // Следующее изменение геометки придёт новым событием.
+    }
+  });
   events.addEventListener('highlight-selection-updated', (event) => {
     try {
       const state = JSON.parse(event.data);
@@ -2510,6 +2877,19 @@ document.querySelector('#todayButton').addEventListener('click', () => {
   }
 });
 document.querySelectorAll('.view-switch').forEach((button) => button.addEventListener('click', () => switchView(button.dataset.view)));
+mapAssignButton.addEventListener('click', startMapAssignment);
+document.querySelector('#mapZoomIn').addEventListener('click', () => mapController?.zoomBy(1));
+document.querySelector('#mapZoomOut').addEventListener('click', () => mapController?.zoomBy(-1));
+document.querySelector('#mapAssignmentSkip').addEventListener('click', skipMapAssignmentPhoto);
+document.querySelector('#mapAssignmentDone').addEventListener('click', finishMapAssignment);
+document.querySelector('#mapPhotoClose').addEventListener('click', () => { mapPhotoCard.hidden = true; });
+document.querySelector('#mapPhotoPrevious').addEventListener('click', () => moveMapPhoto(-1));
+document.querySelector('#mapPhotoNext').addEventListener('click', () => moveMapPhoto(1));
+document.querySelector('#mapPhotoOpen').addEventListener('click', openCurrentMapPhoto);
+mapPhotoImage.addEventListener('error', () => {
+  const fallbackSrc = mapPhotoImage.dataset.fallbackSrc;
+  if (fallbackSrc && mapPhotoImage.getAttribute('src') !== fallbackSrc) mapPhotoImage.src = fallbackSrc;
+});
 presentationButton.addEventListener('click', () => setPresentationMode(!presentationMode));
 timelineTrack.addEventListener('scroll', () => {
   scheduleTimelineScrollbarUpdate();
@@ -2632,6 +3012,12 @@ document.querySelectorAll('[data-calendar-focus]').forEach((button) => {
 document.querySelectorAll('[data-close]').forEach((element) => element.addEventListener('click', () => viewer.close()));
 document.querySelector('#previousPhoto').addEventListener('click', () => movePhoto(-1));
 document.querySelector('#nextPhoto').addEventListener('click', () => movePhoto(1));
+viewerLocationButton.addEventListener('click', openViewerLocationEditor);
+document.querySelector('#viewerLocationClose').addEventListener('click', closeViewerLocationEditor);
+document.querySelector('#viewerLocationZoomIn').addEventListener('click', () => viewerLocationMap?.zoomBy(1));
+document.querySelector('#viewerLocationZoomOut').addEventListener('click', () => viewerLocationMap?.zoomBy(-1));
+viewerLocationSave.addEventListener('click', saveViewerLocation);
+viewerLocationRemove.addEventListener('click', removeViewerLocation);
 viewerDiaryToggle.addEventListener('click', () => {
   setViewerDiaryVisible(!viewerDiaryVisible);
   persistNavigationState();
@@ -2686,6 +3072,7 @@ viewerImage.addEventListener('lostpointercapture', resetViewerPressZoom);
 viewerImage.addEventListener('dragstart', (event) => event.preventDefault());
 viewer.addEventListener('close', () => {
   desktopBridge?.setViewerPhotoContext?.(null);
+  closeViewerLocationEditor();
   resetViewerPressZoom();
   persistNavigationState();
 });
@@ -2695,6 +3082,10 @@ window.addEventListener('beforeunload', () => {
 });
 document.addEventListener('keydown', (event) => {
   if (viewer.open) {
+    if (!viewerLocationEditor.hidden) {
+      if (event.key === 'Escape') closeViewerLocationEditor();
+      return;
+    }
     if (event.key === 'ArrowLeft' && activePhotos.length > 1) movePhoto(-1);
     if (event.key === 'ArrowRight' && activePhotos.length > 1) movePhoto(1);
     return;
