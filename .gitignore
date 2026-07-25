@@ -37,6 +37,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+/.photo-day-server.log
+
+# Local environment and agent-generated exports
+.env
+.env.*
+!.env.example
+/outputs/
 
 # Private archive content and local application state
 /content/
