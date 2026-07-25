@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f3efe5" />
-    <meta name="description" content="Фото дня — локальное приложение для просмотра личного фотоархива как календаря, таймлайна и карты жизни." />
+    <meta name="description" content="Фото дня — локальное приложение, которое превращает личный фотоархив в календарь, таймлайн и карту посещённых мест." />
     <meta property="og:title" content="Фото дня — вся жизнь в фотографиях" />
-    <meta property="og:description" content="Выберите папку с фотографиями и смотрите свой архив как календарь, таймлайн или карту жизни." />
+    <meta property="og:description" content="Выберите папку с фотографиями и смотрите свой архив как календарь, таймлайн или карту посещённых мест." />
     <meta property="og:image" content="https://polyakovin.github.io/daily-photos/docs/screenshots/calendar.jpg" />
     <meta property="og:image:width" content="1440" />
     <meta property="og:image:height" content="900" />
@@ -17,7 +17,7 @@
     <meta property="og:site_name" content="Фото дня" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Фото дня — вся жизнь в фотографиях" />
-    <meta name="twitter:description" content="Локальное приложение, которое превращает личный фотоархив в календарь воспоминаний." />
+    <meta name="twitter:description" content="Локальное приложение, которое превращает личный фотоархив в календарь и карту воспоминаний." />
     <meta name="twitter:image" content="https://polyakovin.github.io/daily-photos/docs/screenshots/calendar.jpg" />
     <meta name="twitter:image:alt" content="Календарь личного фотоархива в приложении «Фото дня»" />
     <title>Фото дня — личный фотоархив</title>
@@ -25,7 +25,7 @@
     <link rel="canonical" href="https://polyakovin.github.io/daily-photos/" />
     <link rel="icon" href="./docs/favicon.svg" type="image/svg+xml" sizes="any" />
     <link rel="preload" href="./docs/screenshots/calendar.jpg" as="image" fetchpriority="high" />
-    <link rel="stylesheet" href="./docs/landing.css?v=5" />
+    <link rel="stylesheet" href="./docs/landing.css?v=6" />
   </head>
   <body>
     <!-- Yandex.Metrika counter -->
@@ -66,7 +66,7 @@
         <div class="hero-copy">
           <p class="eyebrow"><i></i> Личный архив без облака</p>
           <h1 id="hero-title">Один день<br />Одна фотография<br /><em>Вся жизнь</em></h1>
-          <p class="hero-lead">«Фото дня» берёт снимки и записи из выбранной папки и превращает их в календарь воспоминаний. Всё хранится на вашем компьютере.</p>
+          <p class="hero-lead">«Фото дня» берёт снимки и записи из выбранной папки и превращает их в календарь, таймлайн и карту воспоминаний. Всё хранится на вашем компьютере.</p>
 
           <div class="hero-actions">
             <a class="primary-button" href="https://github.com/polyakovin/daily-photos/releases/latest" data-download data-metrika-goal="download_app" data-metrika-placement="hero">
@@ -158,7 +158,7 @@
 
       <section class="modes" id="modes" aria-labelledby="modes-title">
         <div class="section-heading">
-          <p class="section-number">02 — Шесть взглядов</p>
+          <p class="section-number">02 — Семь взглядов</p>
           <h2 id="modes-title">Смотрите на свой архив<br /><em>с разных расстояний</em></h2>
         </div>
 
@@ -179,10 +179,62 @@
           </div>
         </article>
 
+        <article class="mode mode-map">
+          <div class="mode-copy">
+            <span class="mode-index">02</span>
+            <p class="mode-kicker">Карта</p>
+            <h3>Соберите географию своей жизни</h3>
+            <p>Координаты читаются из фотографий и архивов Organic Maps и Obsidian. Добавляйте места вручную, находите адреса, привязывайте снимки и разбирайте фотографии без геометок.</p>
+          </div>
+          <div class="map-demo" aria-label="Карта посещённых мест с фотографиями">
+            <div class="map-demo-header">
+              <div>
+                <small>География воспоминаний</small>
+                <strong>Посещённые места</strong>
+              </div>
+              <p><b>667 мест</b><span>4 фотографии</span></p>
+              <div class="map-demo-actions" aria-hidden="true">
+                <span>Добавить место</span>
+                <span>Расставить без места · 1</span>
+              </div>
+            </div>
+            <div class="map-demo-canvas" aria-hidden="true">
+              <i class="map-land map-land-america"></i>
+              <i class="map-land map-land-europe"></i>
+              <i class="map-land map-land-africa"></i>
+              <i class="map-land map-land-asia"></i>
+              <i class="map-land map-land-australia"></i>
+
+              <span class="map-demo-marker marker-one">84</span>
+              <span class="map-demo-marker marker-two">137</span>
+              <span class="map-demo-marker marker-three">32</span>
+              <span class="map-demo-marker marker-four">219</span>
+              <span class="map-demo-marker marker-five">36</span>
+              <span class="map-demo-marker marker-six">14</span>
+
+              <span class="map-demo-pin pin-one"></span>
+              <span class="map-demo-pin pin-two"></span>
+              <span class="map-demo-pin pin-three"></span>
+
+              <span class="map-photo-fan fan-one">
+                <img src="./docs/screenshots/random.jpg" alt="" loading="lazy" />
+              </span>
+              <span class="map-photo-fan fan-two">
+                <img src="./docs/screenshots/week.jpg" alt="" loading="lazy" />
+              </span>
+              <span class="map-photo-fan fan-three">
+                <img src="./docs/screenshots/calendar.jpg" alt="" loading="lazy" />
+              </span>
+
+              <span class="map-demo-search">Координаты, улица, город, страна… <b>Найти</b></span>
+            </div>
+          </div>
+        </article>
+
         <div class="mode-pair">
           <article class="mode mode-small">
             <div class="mode-copy">
-              <span class="mode-index">02</span>
+              <span class="mode-index">03</span>
               <p class="mode-kicker">Год</p>
               <h3>Выберите главное фото каждого месяца</h3>
             </div>
@@ -193,7 +245,7 @@
 
           <article class="mode mode-small mode-dark">
             <div class="mode-copy">
-              <span class="mode-index">03</span>
+              <span class="mode-index">04</span>
               <p class="mode-kicker">Неделя</p>
               <h3>Семь дней — семь больших воспоминаний</h3>
             </div>
@@ -206,7 +258,7 @@
         <div class="mode-pair">
           <article class="mode mode-small">
             <div class="mode-copy">
-              <span class="mode-index">04</span>
+              <span class="mode-index">05</span>
               <p class="mode-kicker">Таймлайн</p>
               <h3>Листайте годы одним движением</h3>
             </div>
@@ -217,7 +269,7 @@
 
           <article class="mode mode-small mode-dark">
             <div class="mode-copy">
-              <span class="mode-index">05</span>
+              <span class="mode-index">06</span>
               <p class="mode-kicker">Жизнь</p>
               <h3>Заметьте, где воспоминания становятся гуще</h3>
             </div>
@@ -232,7 +284,7 @@
             <img src="./docs/screenshots/random.jpg" alt="Настоящий интерфейс презентации случайных воспоминаний" loading="lazy" />
           </div>
           <div class="mode-copy">
-            <span class="mode-index">06</span>
+            <span class="mode-index">07</span>
             <p class="mode-kicker">Случайное · слайд-шоу</p>
             <h3>Включите воспоминания — и немного поностальгируйте</h3>
             <p>«Случайное» — это личный режим презентации: снимки мягко сменяют друг друга каждые пять секунд. Включите полный экран и позвольте архиву самому выбрать, куда вас вернуть.</p>
