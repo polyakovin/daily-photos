@@ -136,12 +136,12 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .cluster-africa { top: 63%; left: 52%; }
 .cluster-east-asia { top: 35%; left: 82%; }
 .cluster-australia { top: 71%; left: 89%; }
-.map-photo-fan { position: absolute; z-index: 4; width: 78px; height: 54px; overflow: hidden; background: var(--paper); border: 4px solid var(--paper); border-radius: 8px; box-shadow: 0 10px 22px rgba(28,48,41,.28); transform-origin: center bottom; }
+.map-photo-fan { position: absolute; z-index: 4; top: 37%; left: 62%; width: 78px; height: 54px; overflow: hidden; background: var(--paper); border: 4px solid var(--paper); border-radius: 8px; box-shadow: 0 10px 22px rgba(28,48,41,.28); transform: translate(var(--fan-x), var(--fan-y)) rotate(var(--fan-rotation)); transform-origin: center bottom; }
 .map-photo-fan img { width: 100%; height: 100%; object-fit: cover; }
-.fan-rome { top: 3%; left: 47%; transform: rotate(-15deg); }
-.fan-tunis { top: 1%; left: 57%; transform: rotate(-5deg); }
-.fan-karachi { top: 4%; left: 67%; transform: rotate(7deg); }
-.fan-kandy { top: 13%; left: 76%; transform: rotate(17deg); }
+.fan-rome { --fan-x: -140px; --fan-y: -45px; --fan-rotation: -18deg; }
+.fan-tunis { --fan-x: -95px; --fan-y: -110px; --fan-rotation: -7deg; }
+.fan-karachi { --fan-x: -10px; --fan-y: -120px; --fan-rotation: 7deg; }
+.fan-kandy { --fan-x: 70px; --fan-y: -75px; --fan-rotation: 18deg; }
 .map-demo-zoom { position: absolute; z-index: 3; top: 13px; right: 13px; overflow: hidden; display: grid; color: var(--ink); background: rgba(255,253,247,.94); border: 1px solid rgba(22,58,48,.12); border-radius: 9px; box-shadow: 0 5px 14px rgba(35,49,44,.14); }
 .map-demo-zoom b { width: 28px; height: 28px; display: grid; place-items: center; font-size: 13px; font-weight: 500; }
 .map-demo-zoom b + b { border-top: 1px solid rgba(22,58,48,.12); }
@@ -250,10 +250,10 @@ a:focus-visible { outline: 3px solid rgba(213, 162, 74, .7); outline-offset: 4px
   .map-demo-actions span:first-child { display: none; }
   .map-demo-marker { width: 25px; height: 25px; border-width: 2px; font-size: 6px; }
   .map-photo-fan { width: 48px; height: 34px; border-width: 3px; border-radius: 6px; }
-  .fan-rome { left: 42%; }
-  .fan-tunis { left: 54%; }
-  .fan-karachi { left: 66%; }
-  .fan-kandy { left: 76%; }
+  .fan-rome { --fan-x: -75px; --fan-y: -20px; }
+  .fan-tunis { --fan-x: -48px; --fan-y: -48px; }
+  .fan-karachi { --fan-x: -2px; --fan-y: -52px; }
+  .fan-kandy { --fan-x: 43px; --fan-y: -32px; }
   .map-demo-search { left: 8px; bottom: 8px; width: min(215px, calc(100% - 63px)); min-height: 30px; padding-left: 9px; font-size: 6px; }
   .map-demo-search b { min-height: 22px; padding-inline: 10px; font-size: 6px; }
   .map-demo-zoom { top: 8px; right: 8px; }

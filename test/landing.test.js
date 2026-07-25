@@ -15,7 +15,7 @@ test('лендинг показывает карту посещённых мес
   assert.doesNotMatch(html, /Organic Maps|Obsidian/);
   assert.match(html, /Добавить место/);
   assert.match(html, /Расставить без места · 12/);
-  assert.match(html, /landing\.css\?v=7/);
+  assert.match(html, /landing\.css\?v=8/);
   assert.match(html, /https:\/\/tile\.openstreetmap\.org\/2\/0\/1\.png/);
   assert.match(html, /© OpenStreetMap/);
   assert.ok(
@@ -27,6 +27,8 @@ test('лендинг показывает карту посещённых мес
   assert.match(styles, /\.map-demo-canvas\s*\{/);
   assert.match(styles, /\.map-demo-tiles\s*\{/);
   assert.match(styles, /\.map-photo-fan\s*\{/);
+  assert.match(styles, /\.map-photo-fan[\s\S]*?top:\s*37%[\s\S]*?left:\s*62%[\s\S]*?translate\(var\(--fan-x\),\s*var\(--fan-y\)\)/);
+  assert.match(styles, /\.fan-kandy\s*\{\s*--fan-x:\s*70px;\s*--fan-y:\s*-75px/);
   assert.doesNotMatch(styles, /\.map-land(?:\s|\-|\.|\{)/);
 
   for (const relativePath of [
