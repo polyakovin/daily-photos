@@ -3,6 +3,7 @@ const test = require('node:test');
 const {
   buildDateLocations,
   homeOfficeDateCandidates,
+  locationReference,
   mediaDate,
   parseHomeOfficeLocations,
   parseKmlPlacemarks
@@ -34,6 +35,40 @@ locations:
   assert.deepEqual(
     homeOfficeDateCandidates(locations).get('2022-01-04').map((candidate) => candidate.name),
     ['Ереван', 'Гарни']
+  );
+});
+
+test('location reference keeps all Obsidian places, including undated media and bare references', () => {
+  const homeOfficeLocations = parseHomeOfficeLocations(`
+locations:
+  - name: "Тунис"
+    country: "Тунис"
+    location:
+      - 36.8002
+      - 10.185765
+    visited: true
+  - name: "Сус"
+    country: "Тунис"
+    location:
+      - 35.82883
+      - 10.640539
+    media:
+      - name: "P1300627.webp"
+  - name: "Sidi Bou Saïd"
+    country: "Тунис"
+    location:
+      - 36.871093
+      - 10.349053
+  `);
+  const reference = locationReference(homeOfficeLocations, [], '2026-07-24T00:00:00.000Z');
+  assert.equal(reference.places.length, 3);
+  assert.deepEqual(
+    reference.places.map(({ name, evidence }) => ({ name, evidence })),
+    [
+      { name: 'Тунис', evidence: 'visited' },
+      { name: 'Сус', evidence: 'media' },
+      { name: 'Sidi Bou Saïd', evidence: 'reference' }
+    ]
   );
 });
 

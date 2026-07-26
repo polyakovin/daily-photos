@@ -312,10 +312,32 @@ function archiveDestination(styleValue, date, sourcePath) {
   return { directoryParts, stem };
 }
 
+function archiveRetargetDestination(styleValue, date, sourcePath) {
+  const style = normalizeArchiveStyle(styleValue) || { ...DEFAULT_ARCHIVE_STYLE };
+  const parsed = path.parse(path.basename(sourcePath));
+  let sourceStem = parsed.name;
+
+  if (style.type === 'year-month-day-name') {
+    sourceStem = sourceStem.replace(/^\d{1,2}[ ._-]+/, '');
+  } else if ([
+    'year-month-full-date-name',
+    'year-full-date-name',
+    'full-date-name'
+  ].includes(style.type)) {
+    sourceStem = sourceStem.replace(/^(?:19|20)\d{2}([._-])\d{1,2}\1\d{1,2}[ ._-]+/, '');
+  } else if (style.type === 'year-month-day-prefix-name') {
+    sourceStem = sourceStem.replace(/^\d{1,2}[._-]\d{1,2}[ ._-]+/, '');
+  }
+
+  const descriptivePath = path.join(path.dirname(sourcePath), `${sourceStem || parsed.name}${parsed.ext}`);
+  return archiveDestination(style, date, descriptivePath);
+}
+
 module.exports = {
   DEFAULT_ARCHIVE_STYLE,
   STYLE_TYPES,
   archiveDestination,
+  archiveRetargetDestination,
   classifyArchivePath,
   detectArchiveStyle,
   normalizeArchiveStyle,

@@ -21,6 +21,7 @@ test('photo location storage keeps only valid photo ids and coordinates', () => 
       source: 'home-office',
       place: 'Москва'
     }],
+    ['2024/07/06.webp', { hidden: true }],
     ['../outside.jpg', { latitude: 55.75, longitude: 37.61 }],
     ['invalid', { latitude: 55.75, longitude: 37.61 }],
     ['b'.repeat(32), { latitude: 100, longitude: 37.61 }]
@@ -34,7 +35,8 @@ test('photo location storage keeps only valid photo ids and coordinates', () => 
         longitude: 37.61,
         source: 'home-office',
         place: 'Москва'
-      }
+      },
+      '2024/07/06.webp': { hidden: true }
     }
   });
   assert.deepEqual(normalizeCoordinates({ latitude: '55.75', longitude: '37.61' }), {
@@ -81,11 +83,35 @@ test('manual photo location can be saved and removed through the local API', asy
   assert.equal(photo.latitude, 55.75);
   assert.equal(photo.longitude, 37.61);
   const endpoint = `${server.url}/api/photo-locations/${photo.id}`;
+  const mapEndpoint = `${endpoint}/map`;
+
+  const hiddenResponse = await fetch(mapEndpoint, { method: 'DELETE' });
+  assert.equal(hiddenResponse.status, 200);
+  assert.deepEqual(await hiddenResponse.json(), {
+    photoId: photo.id,
+    latitude: null,
+    longitude: null,
+    locationSource: null,
+    locationPlace: null,
+    locationCountry: null,
+    locationReferenceId: null,
+    locationHidden: true
+  });
+  assert.deepEqual(
+    readPhotoLocations(path.join(archiveRoot, 'photo_locations.json')).get('2024-07-05 place.jpg'),
+    { hidden: true }
+  );
 
   const savedResponse = await fetch(endpoint, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ latitude: 55.7558, longitude: 37.6173 })
+    body: JSON.stringify({
+      latitude: 55.7558,
+      longitude: 37.6173,
+      place: 'Красная площадь, Москва',
+      country: 'Россия',
+      referenceId: 'place-moscow'
+    })
   });
   assert.equal(savedResponse.status, 200);
   assert.deepEqual(await savedResponse.json(), {
@@ -93,13 +119,17 @@ test('manual photo location can be saved and removed through the local API', asy
     latitude: 55.7558,
     longitude: 37.6173,
     locationSource: 'manual',
-    locationPlace: null,
-    locationCountry: null
+    locationPlace: 'Красная площадь, Москва',
+    locationCountry: 'Россия',
+    locationReferenceId: 'place-moscow'
   });
   assert.deepEqual(readPhotoLocations(path.join(archiveRoot, 'photo_locations.json')).get('2024-07-05 place.jpg'), {
     latitude: 55.7558,
     longitude: 37.6173,
-    source: 'manual'
+    source: 'manual',
+    place: 'Красная площадь, Москва',
+    country: 'Россия',
+    referenceId: 'place-moscow'
   });
 
   const invalidResponse = await fetch(endpoint, {
@@ -117,6 +147,7 @@ test('manual photo location can be saved and removed through the local API', asy
     longitude: null,
     locationSource: null,
     locationPlace: null,
-    locationCountry: null
+    locationCountry: null,
+    locationReferenceId: null
   });
 });

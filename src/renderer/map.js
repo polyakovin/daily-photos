@@ -7,6 +7,8 @@
   const MAX_LATITUDE = 85.05112878;
   const MIN_ZOOM = 1;
   const MAX_ZOOM = 18;
+  const WHEEL_ZOOM_THRESHOLD = 90;
+  const WHEEL_ZOOM_COOLDOWN = 150;
 
   function clamp(value, minimum, maximum) {
     return Math.max(minimum, Math.min(maximum, value));
@@ -62,6 +64,98 @@
     return normalizeCoordinates(point);
   }
 
+  function parseCoordinateQuery(value) {
+    const query = String(value || '').trim().replace(/^geo:/i, '');
+    let match = query.match(
+      /^([+-]?(?:\d{1,2}(?:\.\d+)?|90(?:\.0+)?))\s*[,;\s]\s*([+-]?(?:\d{1,3}(?:\.\d+)?|180(?:\.0+)?))$/
+    );
+    if (!match) {
+      match = query.match(
+        /^([+-]?\d{1,2}),(\d+)\s+([+-]?\d{1,3}),(\d+)$/
+      );
+      if (match) {
+        match = [match[0], `${match[1]}.${match[2]}`, `${match[3]}.${match[4]}`];
+      }
+    }
+    return match
+      ? normalizeCoordinates({ latitude: match[1], longitude: match[2] })
+      : null;
+  }
+
+  function clusterProjectedPoints(points, zoom, cellSize) {
+    const groups = new Map();
+    for (const point of Array.isArray(points) ? points : []) {
+      const location = pointCoordinates(point);
+      if (!location) continue;
+      const world = project(location.latitude, location.longitude, zoom);
+      const cellX = Math.floor(world.x / cellSize);
+      const cellY = Math.floor(world.y / cellSize);
+      const key = `${zoom}:${cellX}:${cellY}`;
+      const group = groups.get(key) || {
+        key,
+        points: [],
+        worldX: 0,
+        worldY: 0
+      };
+      group.points.push(point);
+      group.worldX += world.x;
+      group.worldY += world.y;
+      groups.set(key, group);
+    }
+    return [...groups.values()].map((group) => ({
+      ...group,
+      worldX: group.worldX / group.points.length,
+      worldY: group.worldY / group.points.length
+    }));
+  }
+
+  function photoStackPoints(points) {
+    const locatedPoints = (Array.isArray(points) ? points : [])
+      .filter((point) => pointCoordinates(point));
+    const photos = locatedPoints
+      .filter((point) => (
+        point.mapPointType === 'photo'
+        && (point.thumbnailSrc || point.src)
+      ))
+      .sort((a, b) => (
+        String(b.date || '').localeCompare(String(a.date || ''))
+        || String(a.id || '').localeCompare(String(b.id || ''))
+    ));
+    if (photos.length < 2) return [];
+    return photos;
+  }
+
+  function photoFanLayout(total, index) {
+    const photoCount = Math.max(1, Math.floor(Number(total) || 1));
+    const photoIndex = clamp(Math.floor(Number(index) || 0), 0, photoCount - 1);
+    let ring = 0;
+    let ringStart = 0;
+    let ringCount = 0;
+
+    while (ringStart < photoCount) {
+      const capacity = 7 + ring * 3;
+      ringCount = Math.min(capacity, photoCount - ringStart);
+      if (photoIndex < ringStart + ringCount) break;
+      ringStart += ringCount;
+      ring += 1;
+    }
+
+    const indexInRing = photoIndex - ringStart;
+    const spread = ringCount <= 1 ? 0 : Math.min(150, 34 * (ringCount - 1));
+    const angle = ringCount <= 1
+      ? 0
+      : -spread / 2 + spread * indexInRing / (ringCount - 1);
+    const radius = 124 + ring * 78;
+    const radians = angle * Math.PI / 180;
+
+    return {
+      x: Math.sin(radians) * radius,
+      y: -Math.cos(radians) * radius,
+      angle: angle * 0.22,
+      ring
+    };
+  }
+
   class InteractiveMap {
     constructor(container, options = {}) {
       if (!container) throw new Error('Не указан контейнер карты');
@@ -71,9 +165,16 @@
       this.zoom = clamp(Math.round(Number(options.zoom) || 2), MIN_ZOOM, MAX_ZOOM);
       this.points = [];
       this.selection = null;
+      this.selectionMode = Boolean(options.selectionMode);
       this.tileNodes = new Map();
+      this.markerNodes = new Map();
       this.frame = 0;
       this.pointer = null;
+      this.wheelAccumulator = 0;
+      this.wheelDirection = 0;
+      this.lastWheelZoomAt = 0;
+      this.wheelResetTimer = 0;
+      this.previewKey = null;
       this.destroyed = false;
 
       this.tileLayer = document.createElement('div');
@@ -82,8 +183,24 @@
       this.markerLayer.className = 'geo-map-markers';
       this.selectionLayer = document.createElement('div');
       this.selectionLayer.className = 'geo-map-selection-layer';
+      this.preview = document.createElement('aside');
+      this.preview.className = 'geo-map-hover-preview';
+      this.preview.hidden = true;
+      this.previewImage = document.createElement('img');
+      this.previewImage.alt = '';
+      this.previewCopy = document.createElement('span');
+      this.previewTitle = document.createElement('strong');
+      this.previewSubtitle = document.createElement('small');
+      this.previewCopy.replaceChildren(this.previewTitle, this.previewSubtitle);
+      this.preview.replaceChildren(this.previewImage, this.previewCopy);
       this.container.classList.add('geo-map');
-      this.container.replaceChildren(this.tileLayer, this.markerLayer, this.selectionLayer);
+      this.container.classList.toggle('is-selecting-location', this.selectionMode);
+      this.container.replaceChildren(
+        this.tileLayer,
+        this.markerLayer,
+        this.selectionLayer,
+        this.preview
+      );
 
       this.handlePointerDown = this.handlePointerDown.bind(this);
       this.handlePointerMove = this.handlePointerMove.bind(this);
@@ -115,6 +232,15 @@
       return {
         width: Math.max(1, this.container.clientWidth),
         height: Math.max(1, this.container.clientHeight)
+      };
+    }
+
+    pixelFromClient(clientX, clientY) {
+      const bounds = this.container.getBoundingClientRect();
+      const viewport = this.viewport();
+      return {
+        x: (clientX - bounds.left) * viewport.width / Math.max(1, bounds.width),
+        y: (clientY - bounds.top) * viewport.height / Math.max(1, bounds.height)
       };
     }
 
@@ -153,6 +279,12 @@
     setSelection(location) {
       this.selection = normalizeCoordinates(location);
       this.scheduleRender();
+    }
+
+    setSelectionMode(enabled) {
+      this.selectionMode = Boolean(enabled);
+      this.container.classList.toggle('is-selecting-location', this.selectionMode);
+      if (this.selectionMode) this.hidePointPreview();
     }
 
     fitPoints(points = this.points) {
@@ -208,10 +340,11 @@
     handlePointerDown(event) {
       if (event.button !== 0 || event.target.closest('.geo-map-marker')) return;
       const center = this.centerWorld();
+      const start = this.pixelFromClient(event.clientX, event.clientY);
       this.pointer = {
         id: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
+        startX: start.x,
+        startY: start.y,
         centerX: center.x,
         centerY: center.y,
         moved: false
@@ -222,8 +355,9 @@
 
     handlePointerMove(event) {
       if (!this.pointer || this.pointer.id !== event.pointerId) return;
-      const deltaX = event.clientX - this.pointer.startX;
-      const deltaY = event.clientY - this.pointer.startY;
+      const current = this.pixelFromClient(event.clientX, event.clientY);
+      const deltaX = current.x - this.pointer.startX;
+      const deltaY = current.y - this.pointer.startY;
       if (Math.hypot(deltaX, deltaY) > 4) this.pointer.moved = true;
       this.center = unproject(
         this.pointer.centerX - deltaX,
@@ -242,10 +376,9 @@
         this.container.releasePointerCapture(event.pointerId);
       }
       if (!pointer.moved) {
-        const bounds = this.container.getBoundingClientRect();
-        this.options.onMapClick?.(
-          this.locationAtPixel(event.clientX - bounds.left, event.clientY - bounds.top)
-        );
+        this.center = unproject(pointer.centerX, pointer.centerY, this.zoom);
+        this.scheduleRender();
+        this.options.onMapClick?.(this.locationAtPixel(pointer.startX, pointer.startY));
       } else {
         this.options.onViewChange?.(this.getCenter());
       }
@@ -253,20 +386,37 @@
 
     handleWheel(event) {
       event.preventDefault();
-      const bounds = this.container.getBoundingClientRect();
-      this.zoomBy(event.deltaY < 0 ? 1 : -1, {
-        x: event.clientX - bounds.left,
-        y: event.clientY - bounds.top
-      });
+      const multiplier = event.deltaMode === 1
+        ? 18
+        : event.deltaMode === 2
+          ? this.viewport().height
+          : 1;
+      const delta = event.deltaY * multiplier;
+      const direction = Math.sign(delta);
+      if (!direction) return;
+      if (direction !== this.wheelDirection) this.wheelAccumulator = 0;
+      this.wheelDirection = direction;
+      this.wheelAccumulator += delta;
+      clearTimeout(this.wheelResetTimer);
+      this.wheelResetTimer = setTimeout(() => {
+        this.wheelAccumulator = 0;
+        this.wheelDirection = 0;
+      }, 220);
+
+      const now = typeof performance === 'object' ? performance.now() : Date.now();
+      if (
+        Math.abs(this.wheelAccumulator) < WHEEL_ZOOM_THRESHOLD
+        || now - this.lastWheelZoomAt < WHEEL_ZOOM_COOLDOWN
+      ) return;
+
+      this.lastWheelZoomAt = now;
+      this.wheelAccumulator = 0;
+      this.zoomBy(direction < 0 ? 1 : -1, this.pixelFromClient(event.clientX, event.clientY));
     }
 
     handleDoubleClick(event) {
       event.preventDefault();
-      const bounds = this.container.getBoundingClientRect();
-      this.zoomBy(1, {
-        x: event.clientX - bounds.left,
-        y: event.clientY - bounds.top
-      });
+      this.zoomBy(1, this.pixelFromClient(event.clientX, event.clientY));
     }
 
     renderTiles() {
@@ -297,7 +447,7 @@
             this.tileLayer.append(image);
             this.tileNodes.set(key, image);
           }
-          image.style.transform = `translate3d(${Math.round(rawTileX * TILE_SIZE - center.x + viewport.width / 2)}px, ${Math.round(tileY * TILE_SIZE - center.y + viewport.height / 2)}px, 0)`;
+          image.style.transform = `translate3d(${rawTileX * TILE_SIZE - center.x + viewport.width / 2}px, ${tileY * TILE_SIZE - center.y + viewport.height / 2}px, 0)`;
         }
       }
 
@@ -309,68 +459,199 @@
     }
 
     screenPoint(location) {
+      const world = project(location.latitude, location.longitude, this.zoom);
+      return this.screenPointFromWorld(world.x, world.y);
+    }
+
+    screenPointFromWorld(worldX, worldY) {
       const viewport = this.viewport();
       const center = this.centerWorld();
-      const world = project(location.latitude, location.longitude, this.zoom);
       const worldSize = TILE_SIZE * (2 ** this.zoom);
-      let deltaX = world.x - center.x;
+      let deltaX = worldX - center.x;
       if (deltaX > worldSize / 2) deltaX -= worldSize;
       if (deltaX < -worldSize / 2) deltaX += worldSize;
       return {
         x: viewport.width / 2 + deltaX,
-        y: viewport.height / 2 + world.y - center.y
+        y: viewport.height / 2 + worldY - center.y
       };
+    }
+
+    markerNode(key) {
+      let marker = this.markerNodes.get(key);
+      if (marker) return marker;
+      marker = document.createElement('div');
+      const hit = document.createElement('button');
+      hit.type = 'button';
+      hit.className = 'geo-map-marker-hit';
+      hit.addEventListener('pointerdown', (event) => event.stopPropagation());
+      hit.addEventListener('pointerenter', () => this.showPointPreview(marker));
+      hit.addEventListener('pointerleave', () => this.hidePointPreview(key));
+      hit.addEventListener('focus', () => this.showPointPreview(marker));
+      hit.addEventListener('blur', () => this.hidePointPreview(key));
+      hit.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const group = marker.photoDayGroup;
+        if (!group) return;
+        const uniqueLocations = new Set(group.points.map((point) => (
+          `${Number(point.latitude).toFixed(5)}:${Number(point.longitude).toFixed(5)}`
+        )));
+        if (uniqueLocations.size > 1 && this.zoom < 15) {
+          this.setCenter(
+            unproject(group.worldX, group.worldY, this.zoom),
+            Math.min(15, this.zoom + 2)
+          );
+          this.options.onViewChange?.(this.getCenter());
+          return;
+        }
+        if (this.selectionMode) {
+          if (this.options.onPointClick) this.options.onPointClick(group.points);
+          else this.options.onMapClick?.(pointCoordinates(group.points[0]));
+          return;
+        }
+        this.options.onPointClick?.(group.points);
+      });
+      marker.photoDayHit = hit;
+      marker.append(hit);
+      this.markerLayer.append(marker);
+      this.markerNodes.set(key, marker);
+      return marker;
+    }
+
+    renderMarkerContent(marker, group, count, stackPhotos) {
+      const photoCount = group.points.filter((point) => point.mapPointType === 'photo').length;
+      const stackSources = stackPhotos.map((photo) => photo.thumbnailSrc || photo.src);
+      const signature = `${count}:${photoCount}:${stackSources.join('|')}`;
+      if (marker.photoDayContentSignature === signature) return;
+
+      const hitChildren = [];
+      marker.photoDayFan?.remove();
+      marker.photoDayFan = null;
+      if (stackPhotos.length) {
+        const fan = document.createElement('span');
+        fan.className = 'geo-map-photo-fan';
+        fan.setAttribute('aria-label', 'Фотографии группы');
+        stackPhotos.forEach((photo, index) => {
+          const fanPhoto = document.createElement('button');
+          const image = document.createElement('img');
+          const layout = photoFanLayout(stackPhotos.length, index);
+          fanPhoto.type = 'button';
+          fanPhoto.className = 'geo-map-fan-photo';
+          fanPhoto.setAttribute(
+            'aria-label',
+            photo.date ? `Открыть фотографию за ${photo.date}` : 'Открыть фотографию'
+          );
+          fanPhoto.style.setProperty('--fan-x', `${layout.x.toFixed(2)}px`);
+          fanPhoto.style.setProperty('--fan-y', `${layout.y.toFixed(2)}px`);
+          fanPhoto.style.setProperty('--fan-angle', `${layout.angle.toFixed(2)}deg`);
+          fanPhoto.style.setProperty('--fan-order', String(index + 1));
+          fanPhoto.addEventListener('pointerdown', (event) => event.stopPropagation());
+          fanPhoto.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (this.options.onPhotoClick) this.options.onPhotoClick(photo);
+            else this.options.onPointClick?.([photo]);
+          });
+          image.src = photo.thumbnailSrc || photo.src;
+          image.alt = '';
+          image.loading = 'lazy';
+          image.decoding = 'async';
+          image.draggable = false;
+          fanPhoto.append(image);
+          fan.append(fanPhoto);
+        });
+        marker.photoDayFan = fan;
+        marker.append(fan);
+      }
+      if (count > 1) {
+        const countLabel = document.createElement('span');
+        countLabel.className = 'geo-map-marker-count';
+        countLabel.textContent = stackPhotos.length ? String(photoCount) : String(count);
+        hitChildren.push(countLabel);
+      }
+      marker.photoDayHit.replaceChildren(...hitChildren);
+      marker.photoDayContentSignature = signature;
+    }
+
+    showPointPreview(button) {
+      if (!button?.photoDayGroup) return;
+      if (button.classList.contains('has-photo-stack')) {
+        this.hidePointPreview();
+        return;
+      }
+      const group = button.photoDayGroup;
+      const preview = this.options.pointPreview?.(group.points);
+      if (!preview) return;
+      this.previewKey = group.key;
+      this.preview.classList.toggle('has-image', Boolean(preview.src));
+      this.previewImage.hidden = !preview.src;
+      if (preview.src) this.previewImage.src = preview.src;
+      else this.previewImage.removeAttribute('src');
+      this.previewImage.alt = preview.alt || '';
+      this.previewTitle.textContent = preview.title || '';
+      this.previewSubtitle.textContent = preview.subtitle || '';
+      this.preview.hidden = false;
+      this.positionPointPreview(button.photoDayScreen);
+    }
+
+    positionPointPreview(screen) {
+      if (this.preview.hidden || !screen) return;
+      const viewport = this.viewport();
+      const halfWidth = Math.max(82, this.preview.offsetWidth / 2);
+      const x = clamp(screen.x, halfWidth + 8, viewport.width - halfWidth - 8);
+      const placeBelow = screen.y < this.preview.offsetHeight + 34;
+      const y = placeBelow ? screen.y + 24 : screen.y - 20;
+      this.preview.classList.toggle('is-below', placeBelow);
+      this.preview.style.transform = placeBelow
+        ? `translate3d(${x}px, ${y}px, 0) translate(-50%, 0)`
+        : `translate3d(${x}px, ${y}px, 0) translate(-50%, -100%)`;
+    }
+
+    hidePointPreview(key = null) {
+      if (key && this.previewKey !== key) return;
+      this.previewKey = null;
+      this.preview.hidden = true;
+      this.preview.removeAttribute('style');
     }
 
     renderMarkers() {
       const viewport = this.viewport();
       const cellSize = this.zoom >= 13 ? 42 : this.zoom >= 7 ? 48 : 56;
-      const groups = new Map();
-      for (const point of this.points) {
-        const location = pointCoordinates(point);
-        const screen = this.screenPoint(location);
+      const visibleKeys = new Set();
+      for (const group of clusterProjectedPoints(this.points, this.zoom, cellSize)) {
+        const screen = this.screenPointFromWorld(group.worldX, group.worldY);
         if (
           screen.x < -cellSize
           || screen.y < -cellSize
           || screen.x > viewport.width + cellSize
           || screen.y > viewport.height + cellSize
         ) continue;
-        const key = `${Math.floor(screen.x / cellSize)}:${Math.floor(screen.y / cellSize)}`;
-        const group = groups.get(key) || { points: [], x: 0, y: 0 };
-        group.points.push(point);
-        group.x += screen.x;
-        group.y += screen.y;
-        groups.set(key, group);
-      }
-
-      const markers = [];
-      for (const group of groups.values()) {
-        const button = document.createElement('button');
+        visibleKeys.add(group.key);
+        const marker = this.markerNode(group.key);
         const count = group.points.length;
-        const x = group.x / count;
-        const y = group.y / count;
-        button.type = 'button';
-        button.className = `geo-map-marker${count > 1 ? ' is-cluster' : ''}`;
-        button.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0) translate(-50%, -50%)`;
-        button.textContent = count > 1 ? String(count) : '';
-        button.title = count > 1 ? `${count} фотографий` : 'Открыть фотографию';
-        button.setAttribute('aria-label', button.title);
-        button.addEventListener('pointerdown', (event) => event.stopPropagation());
-        button.addEventListener('click', (event) => {
-          event.stopPropagation();
-          const uniqueLocations = new Set(group.points.map((point) => (
-            `${Number(point.latitude).toFixed(5)}:${Number(point.longitude).toFixed(5)}`
-          )));
-          if (uniqueLocations.size > 1 && this.zoom < 15) {
-            this.setCenter(this.locationAtPixel(x, y), Math.min(15, this.zoom + 2));
-            this.options.onViewChange?.(this.getCenter());
-            return;
-          }
-          this.options.onPointClick?.(group.points);
-        });
-        markers.push(button);
+        const referenceOnly = group.points.every((point) => point.mapPointType === 'reference');
+        const stackPhotos = photoStackPoints(group.points);
+        marker.className = `geo-map-marker${count > 1 ? ' is-cluster' : ''}${referenceOnly ? ' is-reference' : ''}${stackPhotos.length ? ' has-photo-stack' : ''}`;
+        marker.style.transform = `translate3d(${screen.x}px, ${screen.y}px, 0) translate(-50%, -50%)`;
+        this.renderMarkerContent(marker, group, count, stackPhotos);
+        marker.photoDayHit.setAttribute(
+          'aria-label',
+          stackPhotos.length
+            ? `Фотографий в группе: ${group.points.filter((point) => point.mapPointType === 'photo').length}`
+            : count > 1
+            ? `${count} точек на карте`
+            : referenceOnly
+              ? `Открыть место ${group.points[0].name || ''}`.trim()
+              : 'Открыть фотографию'
+        );
+        marker.photoDayGroup = group;
+        marker.photoDayScreen = screen;
+        if (this.previewKey === group.key) this.positionPointPreview(screen);
       }
-      this.markerLayer.replaceChildren(...markers);
+      for (const [key, marker] of this.markerNodes) {
+        if (visibleKeys.has(key)) continue;
+        marker.remove();
+        this.markerNodes.delete(key);
+        this.hidePointPreview(key);
+      }
     }
 
     renderSelection() {
@@ -381,7 +662,7 @@
       const screen = this.screenPoint(this.selection);
       const marker = document.createElement('span');
       marker.className = 'geo-map-selection';
-      marker.style.transform = `translate3d(${Math.round(screen.x)}px, ${Math.round(screen.y)}px, 0) translate(-50%, -100%)`;
+      marker.style.transform = `translate3d(${screen.x}px, ${screen.y}px, 0) translate(-50%, -100%)`;
       marker.setAttribute('aria-hidden', 'true');
       this.selectionLayer.replaceChildren(marker);
     }
@@ -396,6 +677,7 @@
     destroy() {
       this.destroyed = true;
       cancelAnimationFrame(this.frame);
+      clearTimeout(this.wheelResetTimer);
       this.resizeObserver?.disconnect();
       this.container.removeEventListener('pointerdown', this.handlePointerDown);
       this.container.removeEventListener('pointermove', this.handlePointerMove);
@@ -411,8 +693,12 @@
     MAX_LATITUDE,
     MAX_ZOOM,
     MIN_ZOOM,
+    clusterProjectedPoints,
     normalizeCoordinates,
     normalizeLongitude,
+    parseCoordinateQuery,
+    photoFanLayout,
+    photoStackPoints,
     project,
     unproject
   };

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('photoDayDesktop', {
   getPathForFile: (file) => webUtils.getPathForFile(file),
   suggestPhotoDate: (filePaths) => ipcRenderer.invoke('archive:suggest-photo-date', filePaths),
   importPhotos: (filePaths, date) => ipcRenderer.invoke('archive:import-photos', filePaths, date),
+  trashPhoto: (photoId) => ipcRenderer.invoke('archive:trash-photo', photoId),
   getBirthDate: () => ipcRenderer.invoke('profile:get-birth-date'),
   setBirthDate: (value) => ipcRenderer.invoke('profile:set-birth-date', value),
   getNavigationState: () => ipcRenderer.invoke('ui:get-navigation-state'),

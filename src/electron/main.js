@@ -13,6 +13,7 @@ const {
 } = require('./photo-importer');
 const { automaticPhotoRoots } = require('./photo-search-roots');
 const { createPhotoPreviewGenerator } = require('./photo-preview-cache');
+const { createPhotoTrashHandler } = require('./photo-trash');
 const { createUpdateManager } = require('./update-manager');
 
 const SETTINGS_FILE_NAME = 'settings.json';
@@ -290,6 +291,12 @@ async function suggestDroppedPhotoDate(filePaths) {
 }
 
 function installIpcHandlers() {
+  const trashPhoto = createPhotoTrashHandler({
+    dialog,
+    shell,
+    getServer: () => photoDayServer,
+    getWindow: () => mainWindow
+  });
   ipcMain.on('viewer:set-photo-context', (event, photoId) => {
     if (event.sender !== mainWindow?.webContents) return;
     viewerPhotoId = typeof photoId === 'string' && /^[a-f0-9]{32}$/.test(photoId)
@@ -302,6 +309,7 @@ function installIpcHandlers() {
   ipcMain.handle('archive:set-convert-images', (_event, enabled) => setArchiveConversion(enabled));
   ipcMain.handle('archive:suggest-photo-date', (_event, filePaths) => suggestDroppedPhotoDate(filePaths));
   ipcMain.handle('archive:import-photos', (_event, filePaths, date) => importDroppedPhotos(filePaths, date));
+  ipcMain.handle('archive:trash-photo', (_event, photoId) => trashPhoto(photoId));
   ipcMain.handle('archive:reveal-directory', async () => {
     if (sourceMode !== 'folder' || !directoryExists(archivePath)) return false;
     const error = await shell.openPath(archivePath);

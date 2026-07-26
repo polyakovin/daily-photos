@@ -1,0 +1,17 @@
+{
+  "description": "Project lifecycle hooks for Photo Day.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/bash \"$(git rev-parse --show-toplevel)/.codex/hooks/build-macos-on-stop.sh\"",
+            "timeout": 1200,
+            "statusMessage": "Собираю приложение для macOS"
+          }
+        ]
+      }
+    ]
+  }
+}

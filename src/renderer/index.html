@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Фото дня — календарь</title>
     <script src="/theme.js?v=1"></script>
-    <link rel="stylesheet" href="/styles.css?v=88" />
+    <link rel="stylesheet" href="/styles.css?v=89" />
   </head>
   <body>
     <main class="shell">
@@ -106,11 +106,23 @@
           </div>
           <div class="map-toolbar-actions">
             <div class="map-summary" id="mapSummary" aria-live="polite"></div>
+            <button class="map-add-place-button" id="mapAddPlaceButton" type="button">Добавить место</button>
             <button class="map-assign-button" id="mapAssignButton" type="button">Расставить без места</button>
           </div>
         </div>
-        <div class="map-stage-wrap">
+        <div class="map-stage-wrap" id="mapStageWrap">
           <div class="photo-map" id="photoMap" role="application" aria-label="Интерактивная карта фотографий"></div>
+          <form class="map-search" id="mapSearch" role="search" autocomplete="off">
+            <label class="sr-only" for="mapSearchInput">Найти место на карте</label>
+            <input
+              id="mapSearchInput"
+              type="search"
+              placeholder="Координаты, улица, город, страна…"
+              maxlength="200"
+            />
+            <button type="submit">Найти</button>
+            <div class="map-search-results" id="mapSearchResults" hidden></div>
+          </form>
           <div class="map-controls" aria-label="Масштаб карты">
             <button id="mapZoomIn" type="button" aria-label="Приблизить карту">+</button>
             <button id="mapZoomOut" type="button" aria-label="Отдалить карту">−</button>
@@ -121,17 +133,49 @@
             <span>GPS-координаты появятся из EXIF или файла архива, а остальные места можно отметить вручную.</span>
           </div>
           <aside class="map-assignment" id="mapAssignment" hidden>
-            <img id="mapAssignmentImage" alt="" />
+            <button
+              class="map-assignment-preview"
+              id="mapAssignmentPreview"
+              type="button"
+              aria-label="Открыть фотографию в режиме просмотра"
+            >
+              <img id="mapAssignmentImage" alt="" />
+            </button>
             <div>
               <small id="mapAssignmentProgress"></small>
               <strong id="mapAssignmentDate"></strong>
               <span>Нажмите на место съёмки на карте</span>
             </div>
             <div class="map-assignment-actions">
+              <button id="mapAssignmentOpenPhoto" type="button">Открыть фото</button>
+              <button id="mapAssignmentChoosePlace" type="button">Выбрать место</button>
               <button id="mapAssignmentSkip" type="button">Пропустить</button>
               <button id="mapAssignmentDone" type="button">Готово</button>
             </div>
           </aside>
+          <form class="map-place-editor" id="mapPlaceEditor" autocomplete="off" hidden>
+            <div class="map-place-editor-heading">
+              <div>
+                <small>Новое место</small>
+                <strong>Поставьте точку на карте</strong>
+              </div>
+              <button id="mapPlaceCancel" type="button" aria-label="Отменить добавление места">×</button>
+            </div>
+            <label>
+              <span>Название</span>
+              <input id="mapPlaceName" type="text" maxlength="240" placeholder="Например, Сиди-Бу-Саид" required />
+            </label>
+            <label>
+              <span>Страна или регион</span>
+              <input id="mapPlaceCountry" type="text" maxlength="120" placeholder="Необязательно" />
+            </label>
+            <p id="mapPlaceCoordinates">Нажмите на карте или найдите адрес</p>
+            <p class="map-place-error" id="mapPlaceError" role="alert" hidden></p>
+            <div class="map-place-editor-actions">
+              <button id="mapPlaceCancelSecondary" type="button">Отмена</button>
+              <button class="is-primary" id="mapPlaceSave" type="submit" disabled>Сохранить место</button>
+            </div>
+          </form>
           <article class="map-photo-card" id="mapPhotoCard" hidden>
             <button class="map-photo-close" id="mapPhotoClose" type="button" aria-label="Закрыть карточку">×</button>
             <img id="mapPhotoImage" alt="" />
@@ -143,12 +187,14 @@
             <div class="map-photo-actions">
               <button id="mapPhotoPrevious" type="button" aria-label="Предыдущая фотография">←</button>
               <button id="mapPhotoOpen" type="button">Открыть</button>
+              <button id="mapPhotoChoosePlace" type="button" hidden>Выбрать место</button>
+              <button id="mapPlaceAttachPhoto" type="button" hidden>Привязать фотографию</button>
+              <button id="mapPointDelete" type="button" hidden>Удалить место</button>
               <button id="mapPhotoNext" type="button" aria-label="Следующая фотография">→</button>
             </div>
           </article>
         </div>
         <div class="map-footer">
-          <span id="mapStats">Геометки хранятся вместе с выбранной папкой архива</span>
           <span>Перетаскивайте карту · масштабируйте колёсиком</span>
         </div>
       </section>
@@ -368,6 +414,36 @@
       </div>
     </dialog>
 
+    <dialog class="map-photo-picker" id="mapPhotoPickerDialog" aria-labelledby="mapPhotoPickerTitle">
+      <div class="map-photo-picker-card">
+        <button class="map-photo-picker-close" id="mapPhotoPickerClose" type="button" aria-label="Закрыть выбор фотографии">×</button>
+        <p class="map-photo-picker-kicker">Связать воспоминание с местом</p>
+        <h1 id="mapPhotoPickerTitle">Выберите фотографию</h1>
+        <p class="map-photo-picker-place" id="mapPhotoPickerPlace"></p>
+        <label class="map-photo-picker-search">
+          <span>Поиск по дате или имени файла</span>
+          <input id="mapPhotoPickerSearch" type="search" placeholder="2024-05-04" autocomplete="off" />
+        </label>
+        <p class="map-photo-picker-status" id="mapPhotoPickerStatus" aria-live="polite"></p>
+        <div class="map-photo-picker-grid" id="mapPhotoPickerGrid"></div>
+      </div>
+    </dialog>
+
+    <dialog class="map-photo-picker map-place-picker" id="mapPlacePickerDialog" aria-labelledby="mapPlacePickerTitle">
+      <div class="map-photo-picker-card">
+        <button class="map-photo-picker-close" id="mapPlacePickerClose" type="button" aria-label="Закрыть выбор места">×</button>
+        <p class="map-photo-picker-kicker">Привязать выбранную фотографию</p>
+        <h1 id="mapPlacePickerTitle">Выберите место</h1>
+        <p class="map-photo-picker-place" id="mapPlacePickerPhoto"></p>
+        <label class="map-photo-picker-search">
+          <span>Поиск по названию или стране</span>
+          <input id="mapPlacePickerSearch" type="search" placeholder="Тунис, Италия, Канди…" autocomplete="off" />
+        </label>
+        <p class="map-photo-picker-status" id="mapPlacePickerStatus" aria-live="polite"></p>
+        <div class="map-place-picker-grid" id="mapPlacePickerGrid"></div>
+      </div>
+    </dialog>
+
     <dialog class="viewer" id="viewer">
       <div class="viewer-backdrop" data-close></div>
       <article class="viewer-panel">
@@ -384,7 +460,19 @@
             </div>
             <button id="viewerLocationClose" type="button" aria-label="Закрыть редактор места">×</button>
           </div>
+          <form class="map-search viewer-location-search" id="viewerLocationSearch" role="search" autocomplete="off">
+            <label class="sr-only" for="viewerLocationSearchInput">Найти место съёмки</label>
+            <input
+              id="viewerLocationSearchInput"
+              type="search"
+              placeholder="Координаты, улица, город, страна…"
+              maxlength="200"
+            />
+            <button type="submit">Найти</button>
+            <div class="map-search-results" id="viewerLocationSearchResults" hidden></div>
+          </form>
           <div class="viewer-location-map" id="viewerLocationMap" role="application" aria-label="Выбор места фотографии"></div>
+          <span class="viewer-location-existing-note">Оранжевые точки — сохранённые места. Нажмите, чтобы выбрать.</span>
           <div class="viewer-location-map-controls" aria-label="Масштаб карты">
             <button id="viewerLocationZoomIn" type="button" aria-label="Приблизить карту">+</button>
             <button id="viewerLocationZoomOut" type="button" aria-label="Отдалить карту">−</button>
@@ -410,11 +498,27 @@
           <div class="viewer-alternatives-track" id="viewerAlternativesTrack"></div>
         </section>
         <footer class="viewer-caption">
-          <div>
-            <p id="viewerWeekday"></p>
-            <h2 id="viewerDate"></h2>
+          <div class="viewer-date-control">
+            <div class="viewer-date-summary">
+              <div>
+                <p id="viewerWeekday"></p>
+                <h2 id="viewerDate"></h2>
+              </div>
+              <button class="viewer-date-edit" id="viewerDateEdit" type="button">Изменить дату</button>
+            </div>
+            <form class="viewer-date-form" id="viewerDateForm" hidden>
+              <label class="sr-only" for="viewerDateInput">Новая дата фотографии</label>
+              <input id="viewerDateInput" type="date" min="1900-01-01" required />
+              <button class="viewer-date-save" id="viewerDateSave" type="submit">Перенести</button>
+              <button class="viewer-date-cancel" id="viewerDateCancel" type="button">Отмена</button>
+              <span class="viewer-date-status" id="viewerDateStatus" aria-live="polite"></span>
+            </form>
           </div>
           <div class="viewer-actions">
+            <button class="viewer-trash-button" id="viewerTrashButton" type="button" hidden>
+              В Корзину
+            </button>
+            <span class="viewer-trash-status" id="viewerTrashStatus" aria-live="polite"></span>
             <button class="viewer-location-button" id="viewerLocationButton" type="button">
               <span aria-hidden="true">⌖</span> <span id="viewerLocationButtonLabel">Добавить место</span>
             </button>
@@ -452,9 +556,9 @@
     </dialog>
 
     <script src="/life-range.js?v=1" defer></script>
-    <script src="/map.js?v=1" defer></script>
+    <script src="/map.js?v=2" defer></script>
     <script src="/photo-import-date.js?v=1" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=72" defer></script>
+    <script src="/app.js?v=74" defer></script>
   </body>
 </html>

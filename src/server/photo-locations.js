@@ -54,6 +54,7 @@ function optionalText(value, maximumLength = 240) {
 }
 
 function normalizeLocationRecord(value) {
+  if (value?.hidden === true) return { hidden: true };
   const coordinates = normalizeCoordinates(value);
   if (!coordinates) return null;
   const result = { ...coordinates };
@@ -62,10 +63,12 @@ function normalizeLocationRecord(value) {
   const country = optionalText(value?.country, 120);
   const confidence = optionalText(value?.confidence, 48);
   const observedAt = optionalText(value?.observedAt, 32);
+  const referenceId = optionalText(value?.referenceId, 128);
   if (source && LOCATION_SOURCES.has(source)) result.source = source;
   if (place) result.place = place;
   if (country) result.country = country;
   if (confidence) result.confidence = confidence;
+  if (referenceId) result.referenceId = referenceId;
   if (/^(?:19|20)\d{2}-\d{2}-\d{2}$/.test(observedAt || '')) {
     result.observedAt = observedAt;
   }

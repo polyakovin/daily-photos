@@ -361,7 +361,13 @@ function locationReference(homeOfficeLocations, organicPlaces, generatedAt) {
   const places = [];
   for (const location of homeOfficeLocations) {
     const visitDates = [...new Set(location.media.map(mediaDate).filter(Boolean))].sort();
-    if (!location.visited && !visitDates.length) continue;
+    const evidence = location.visited
+      ? 'visited'
+      : visitDates.length
+        ? 'dated-media'
+        : location.media.length
+          ? 'media'
+          : 'reference';
     places.push({
       id: crypto.createHash('sha256')
         .update(`home-office|${location.name}|${location.latitude}|${location.longitude}`)
@@ -371,8 +377,9 @@ function locationReference(homeOfficeLocations, organicPlaces, generatedAt) {
       latitude: location.latitude,
       longitude: location.longitude,
       source: 'home-office',
-      evidence: location.visited ? 'visited' : 'dated-media',
-      visitDates
+      evidence,
+      mediaCount: location.media.length,
+      ...(visitDates.length ? { visitDates } : {})
     });
   }
   for (const place of organicPlaces) {
@@ -509,6 +516,7 @@ module.exports = {
   distanceKilometers,
   homeOfficeDateCandidates,
   mediaDate,
+  locationReference,
   normalizeName,
   organicMapsDateCandidates,
   parseArguments,

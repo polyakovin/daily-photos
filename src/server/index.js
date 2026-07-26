@@ -3,15 +3,26 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const { createPlaceSearch } = require('./geocoder');
 const { indexPhotoRoots } = require('./photo-indexer');
 const { readImportDateOverrides } = require('./import-date-overrides');
+const {
+  movePhotoToDate,
+  rollbackPhotoDateMove
+} = require('./photo-date-mover');
 const {
   PHOTO_ID_RE,
   normalizeCoordinates,
   normalizeLocationKey,
+  normalizeLocationRecord,
   readPhotoLocations,
   writePhotoLocations
 } = require('./photo-locations');
+const {
+  normalizeReferencePlace,
+  readLocationReference,
+  writeLocationReference
+} = require('./location-reference');
 const {
   conversionFailureMessage,
   displayConversionPath,
@@ -39,6 +50,7 @@ let INDEX_CACHE_FILE = path.join(STATE_ROOT, 'photo-index.json');
 let PHOTO_SELECTIONS_FILE = path.join(STATE_ROOT, 'daily_photo_selections.json');
 let HIGHLIGHT_SELECTIONS_FILE = path.join(STATE_ROOT, 'period_photo_selections.json');
 let PHOTO_LOCATIONS_FILE = path.join(STATE_ROOT, 'photo_locations.json');
+let LOCATION_REFERENCE_FILE = path.join(STATE_ROOT, 'location_reference.json');
 const SERVER_VERSION = String(Math.trunc(fs.statSync(__filename).mtimeMs / 1000));
 const PORT = Number(process.env.PORT || 4173);
 const IMAGE_RE = /\.(?:jpe?g|png|webp|gif|avif)$/i;
@@ -56,6 +68,7 @@ const UI_FILES = new Map([
   ['/app.js', 'app.js']
 ]);
 const updateClients = new Set();
+const searchPlaces = createPlaceSearch();
 
 let shouldConvertImages = process.env.PHOTO_DAY_CONVERT_IMAGES !== '0';
 let shouldIndexMetadata = false;
@@ -111,6 +124,10 @@ function configurePaths({
     sourceMode === 'folder' ? CONTENT_ROOT : STATE_ROOT,
     'photo_locations.json'
   );
+  LOCATION_REFERENCE_FILE = path.join(
+    sourceMode === 'folder' ? CONTENT_ROOT : STATE_ROOT,
+    'location_reference.json'
+  );
 }
 
 function isValidDateKey(value) {
@@ -120,6 +137,15 @@ function isValidDateKey(value) {
   return candidate.getUTCFullYear() === year
     && candidate.getUTCMonth() === month - 1
     && candidate.getUTCDate() === day;
+}
+
+function todayDateKey() {
+  const today = new Date();
+  return [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0')
+  ].join('-');
 }
 
 function readBlurDates() {
@@ -226,7 +252,13 @@ function applyLocationToPhoto(photo, exifLocation = exifPhotoLocations.get(photo
   delete photo.locationSource;
   delete photo.locationPlace;
   delete photo.locationCountry;
+  delete photo.locationReferenceId;
+  delete photo.locationHidden;
   const storedLocation = storedPhotoLocation(photo.id);
+  if (storedLocation?.hidden) {
+    photo.locationHidden = true;
+    return photo;
+  }
   const storedSource = storedLocation?.source || (storedLocation ? 'manual' : null);
   const storedIsManual = storedSource === 'manual';
   const location = storedIsManual ? storedLocation : exifLocation || storedLocation;
@@ -238,18 +270,22 @@ function applyLocationToPhoto(photo, exifLocation = exifPhotoLocations.get(photo
     : exifLocation ? 'exif' : storedSource;
   if (location.place) photo.locationPlace = location.place;
   if (location.country) photo.locationCountry = location.country;
+  if (location.referenceId) photo.locationReferenceId = location.referenceId;
   return photo;
 }
 
 function photoLocationState(photo) {
-  return {
+  const state = {
     photoId: photo.id,
     latitude: photo.latitude ?? null,
     longitude: photo.longitude ?? null,
     locationSource: photo.locationSource || null,
     locationPlace: photo.locationPlace || null,
-    locationCountry: photo.locationCountry || null
+    locationCountry: photo.locationCountry || null,
+    locationReferenceId: photo.locationReferenceId || null
   };
+  if (photo.locationHidden) state.locationHidden = true;
+  return state;
 }
 
 function migrateLegacyHighlightSelections() {
@@ -612,6 +648,7 @@ function dateFromPath(relativePath) {
 
 function scanPhotos() {
   const result = [];
+  indexedPhotoFiles.clear();
   exifPhotoLocations = new Map();
   photoLocationKeys = new Map();
 
@@ -631,6 +668,7 @@ function scanPhotos() {
         const date = dateFromPath(relativePath);
         if (!date) continue;
         const id = indexedPhotoId(absolutePath);
+        indexedPhotoFiles.set(id, { filePath: absolutePath, version: '' });
         photoLocationKeys.set(id, locationStorageKey(absolutePath, id));
         result.push({
           id,
@@ -924,6 +962,7 @@ let diary = [];
 let blurDates = new Set();
 let archiveRefreshTimer = null;
 let archiveRefreshRunning = false;
+let archiveWatchSuppressedUntil = 0;
 
 function archiveSignature(nextPhotos, nextHighlights, nextDiary) {
   return JSON.stringify([nextPhotos, nextHighlights, nextDiary]);
@@ -983,7 +1022,7 @@ function notifyBlurDatesUpdated() {
   notifyEvent('blur-dates-updated', sortedBlurDates());
 }
 
-function updateManualPhotoLocation(photo, coordinates) {
+function updateStoredPhotoLocation(photo, value) {
   const locationKey = photoLocationKeys.get(photo.id) || photo.id;
   const affectedKeys = [...new Set([locationKey, photo.id])];
   const previousLocations = affectedKeys.map((key) => [
@@ -992,9 +1031,7 @@ function updateManualPhotoLocation(photo, coordinates) {
     manualPhotoLocations.get(key)
   ]);
   for (const key of affectedKeys) manualPhotoLocations.delete(key);
-  if (coordinates) {
-    manualPhotoLocations.set(locationKey, { ...coordinates, source: 'manual' });
-  }
+  if (value) manualPhotoLocations.set(locationKey, value);
   try {
     writePhotoLocations(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
   } catch (error) {
@@ -1008,6 +1045,59 @@ function updateManualPhotoLocation(photo, coordinates) {
   const state = photoLocationState(photo);
   notifyEvent('photo-location-updated', state);
   return state;
+}
+
+function updateManualPhotoLocation(photo, coordinates) {
+  return updateStoredPhotoLocation(
+    photo,
+    coordinates ? { ...coordinates, source: 'manual' } : null
+  );
+}
+
+function hidePhotoLocation(photo) {
+  return updateStoredPhotoLocation(photo, { hidden: true });
+}
+
+function deleteLocationReference(placeId) {
+  const currentReference = readLocationReference(LOCATION_REFERENCE_FILE);
+  const place = currentReference.places.find((candidate) => candidate.id === placeId);
+  if (!place) return null;
+
+  const linkedEntries = [...manualPhotoLocations.entries()]
+    .filter(([, location]) => location?.referenceId === placeId);
+  const linkedPhotos = photos.filter((photo) => photo.locationReferenceId === placeId);
+  const nextReference = {
+    ...currentReference,
+    generatedAt: new Date().toISOString(),
+    places: currentReference.places.filter((candidate) => candidate.id !== placeId)
+  };
+
+  writeLocationReference(LOCATION_REFERENCE_FILE, nextReference);
+  for (const [key] of linkedEntries) manualPhotoLocations.set(key, { hidden: true });
+  try {
+    if (linkedEntries.length) writePhotoLocations(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
+  } catch (error) {
+    for (const [key, location] of linkedEntries) manualPhotoLocations.set(key, location);
+    try {
+      writeLocationReference(LOCATION_REFERENCE_FILE, currentReference);
+    } catch (rollbackError) {
+      console.error(`Не удалось восстановить справочник мест: ${rollbackError.message}`);
+    }
+    throw error;
+  }
+
+  const photoLocations = linkedPhotos.map((photo) => {
+    applyLocationToPhoto(photo);
+    const state = photoLocationState(photo);
+    notifyEvent('photo-location-updated', state);
+    return state;
+  });
+  return {
+    placeId,
+    placeName: place.name,
+    removedPhotoCount: linkedEntries.length,
+    photoLocations
+  };
 }
 
 async function refreshArchive(operationId = null) {
@@ -1124,7 +1214,7 @@ function watchArchive() {
         || normalizedFilename.includes('.orientation-fixed.')
         || (!WATCHED_IMAGE_RE.test(normalizedFilename) && !/^_diary\/[^/]+\.md$/i.test(normalizedFilename))
       ) return;
-      if (archiveRefreshRunning) return;
+      if (archiveRefreshRunning || Date.now() < archiveWatchSuppressedUntil) return;
       scheduleArchiveRefresh();
     });
   } catch (error) {
@@ -1279,6 +1369,168 @@ function getPhotoFilePath(id) {
   }
 }
 
+function clonePhotoLocations(locations) {
+  const clone = new Map(locations);
+  if (locations?.documentMetadata) {
+    Object.defineProperty(clone, 'documentMetadata', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: {
+        ...locations.documentMetadata,
+        sources: [...(locations.documentMetadata.sources || [])]
+      }
+    });
+  }
+  return clone;
+}
+
+function archiveDateStateSnapshot() {
+  return {
+    photos,
+    defaultHighlights,
+    highlights,
+    diary,
+    indexedPhotoFiles: new Map(indexedPhotoFiles),
+    photoSelections: new Map(photoSelections),
+    highlightSelections: {
+      years: new Map(highlightSelections.years),
+      months: new Map(highlightSelections.months)
+    },
+    manualPhotoLocations: clonePhotoLocations(manualPhotoLocations),
+    blurDates: new Set(blurDates)
+  };
+}
+
+function restoreArchiveDateState(snapshot) {
+  photos = snapshot.photos;
+  defaultHighlights = snapshot.defaultHighlights;
+  highlights = snapshot.highlights;
+  diary = snapshot.diary;
+  indexedPhotoFiles.clear();
+  for (const [id, value] of snapshot.indexedPhotoFiles) indexedPhotoFiles.set(id, value);
+  photoSelections = new Map(snapshot.photoSelections);
+  highlightSelections = {
+    years: new Map(snapshot.highlightSelections.years),
+    months: new Map(snapshot.highlightSelections.months)
+  };
+  manualPhotoLocations = clonePhotoLocations(snapshot.manualPhotoLocations);
+  blurDates = new Set(snapshot.blurDates);
+}
+
+function persistArchiveDateState() {
+  writePhotoSelections();
+  writeHighlightSelections();
+  writePhotoLocations(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
+  writeBlurDates();
+}
+
+function migratePhotoDateState(photo, destinationPath, nextDate) {
+  const previousDate = photo.date;
+  const nextId = indexedPhotoId(destinationPath);
+  const previousLocationKey = photoLocationKeys.get(photo.id) || photo.id;
+  const nextLocationKey = locationStorageKey(destinationPath, nextId);
+  const storedLocation = manualPhotoLocations.get(previousLocationKey)
+    || manualPhotoLocations.get(photo.id);
+  manualPhotoLocations.delete(previousLocationKey);
+  manualPhotoLocations.delete(photo.id);
+  if (storedLocation) manualPhotoLocations.set(nextLocationKey, storedLocation);
+
+  const explicitlyPreferred = photoSelections.get(previousDate) === photo.id;
+  const wasPreferred = (photoSelections.get(previousDate)
+    || photos.find((candidate) => candidate.date === previousDate)?.id) === photo.id;
+  for (const [date, photoId] of photoSelections) {
+    if (photoId === photo.id) photoSelections.delete(date);
+  }
+  if (explicitlyPreferred) photoSelections.set(nextDate, nextId);
+
+  const previousYear = previousDate.slice(0, 4);
+  const previousMonth = previousDate.slice(0, 7);
+  const nextYear = nextDate.slice(0, 4);
+  const nextMonth = nextDate.slice(0, 7);
+  const highlightedYear = highlightSelections.years.get(previousYear) === previousDate
+    && wasPreferred;
+  const highlightedMonth = highlightSelections.months.get(previousMonth) === previousDate
+    && wasPreferred;
+  if (highlightedYear) {
+    highlightSelections.years.delete(previousYear);
+    highlightSelections.years.set(nextYear, nextDate);
+  }
+  if (highlightedMonth) {
+    highlightSelections.months.delete(previousMonth);
+    highlightSelections.months.set(nextMonth, nextDate);
+  }
+
+  const onlyPhotoOnPreviousDate = photos.filter((candidate) => candidate.date === previousDate).length === 1;
+  if (onlyPhotoOnPreviousDate && blurDates.delete(previousDate)) blurDates.add(nextDate);
+  return nextId;
+}
+
+async function changePhotoDate(photoId, nextDate) {
+  if (sourceMode !== 'folder') {
+    const error = new Error('Смена даты доступна только при работе с выбранной папкой');
+    error.statusCode = 409;
+    throw error;
+  }
+  if (archiveRefreshRunning) {
+    const error = new Error('Архив сейчас обновляется. Повторите попытку чуть позже');
+    error.statusCode = 409;
+    throw error;
+  }
+  const photo = PHOTO_ID_RE.test(photoId)
+    && photos.find((candidate) => candidate.id === photoId);
+  if (!photo) {
+    const error = new Error('Фотография не найдена');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (photo.date === nextDate) return { photo, unchanged: true };
+  const filePath = getPhotoFilePath(photo.id);
+  if (!filePath) {
+    const error = new Error('Оригинал фотографии больше не существует');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const snapshot = archiveDateStateSnapshot();
+  let move = null;
+  archiveRefreshRunning = true;
+  archiveWatchSuppressedUntil = Date.now() + 3000;
+  try {
+    move = await movePhotoToDate({
+      archivePath: CONTENT_ROOT,
+      filePath,
+      date: nextDate
+    });
+    const nextId = migratePhotoDateState(photo, move.destinationPath, nextDate);
+    persistArchiveDateState();
+    if (shouldIndexMetadata) await indexMetadataPhotos(null);
+    else loadArchive();
+    const movedPhoto = photos.find((candidate) => candidate.id === nextId);
+    if (!movedPhoto) throw new Error('Не удалось найти фотографию после переноса');
+    notifyArchiveUpdated();
+    return { photo: movedPhoto, unchanged: false };
+  } catch (error) {
+    restoreArchiveDateState(snapshot);
+    if (move && !move.unchanged) {
+      try {
+        await rollbackPhotoDateMove(CONTENT_ROOT, move);
+      } catch (rollbackError) {
+        console.error(`Не удалось отменить перенос фотографии: ${rollbackError.message}`);
+      }
+    }
+    try {
+      persistArchiveDateState();
+    } catch (restoreError) {
+      console.error(`Не удалось восстановить метаданные фотографии: ${restoreError.message}`);
+    }
+    error.statusCode ||= 500;
+    throw error;
+  } finally {
+    archiveRefreshRunning = false;
+  }
+}
+
 function sendFile(response, filePath, { cacheControl = 'no-cache' } = {}) {
   const extension = path.extname(filePath).toLowerCase();
   const types = {
@@ -1379,8 +1631,137 @@ function handleRequest(request, response) {
     return;
   }
 
+  if (requestUrl.pathname === '/api/geocode' && request.method === 'GET') {
+    const query = requestUrl.searchParams.get('q');
+    searchPlaces(query)
+      .then((results) => sendJson(response, 200, results))
+      .catch((error) => {
+        const invalidQuery = error.message === 'Введите не менее двух символов';
+        if (!invalidQuery) console.error(`Не удалось найти место: ${error.message}`);
+        sendJson(response, invalidQuery ? 400 : 502, {
+          error: invalidQuery ? error.message : 'Поиск места сейчас недоступен'
+        });
+      });
+    return;
+  }
+
   if (requestUrl.pathname === '/api/photos') {
     sendJson(response, 200, photos);
+    return;
+  }
+
+  const photoDateMatch = requestUrl.pathname.match(/^\/api\/photos\/([a-f0-9]{32})\/date$/);
+  if (photoDateMatch && request.method === 'PUT') {
+    let body = '';
+    let bodyTooLarge = false;
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      if (bodyTooLarge) return;
+      body += chunk;
+      if (body.length > 1024) bodyTooLarge = true;
+    });
+    request.on('end', () => {
+      if (bodyTooLarge) {
+        sendJson(response, 413, { error: 'Слишком большой запрос' });
+        return;
+      }
+      let nextDate;
+      try {
+        nextDate = JSON.parse(body).date;
+      } catch {
+        sendJson(response, 400, { error: 'Неверный JSON' });
+        return;
+      }
+      if (!isValidDateKey(nextDate) || nextDate > todayDateKey()) {
+        sendJson(response, 400, { error: 'Выберите корректную дату не позже сегодняшней' });
+        return;
+      }
+      changePhotoDate(photoDateMatch[1], nextDate)
+        .then((result) => sendJson(response, 200, result))
+        .catch((error) => {
+          if (!error.statusCode || error.statusCode >= 500) {
+            console.error(`Не удалось изменить дату фотографии: ${error.message}`);
+          }
+          sendJson(response, error.statusCode || 500, {
+            error: error.statusCode && error.statusCode < 500
+              ? error.message
+              : 'Не удалось перенести фотографию'
+          });
+        });
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/location-reference' && request.method === 'GET') {
+    sendJson(response, 200, readLocationReference(LOCATION_REFERENCE_FILE));
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/location-reference' && request.method === 'POST') {
+    let body = '';
+    let bodyTooLarge = false;
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      if (bodyTooLarge) return;
+      body += chunk;
+      if (body.length > 4096) bodyTooLarge = true;
+    });
+    request.on('end', () => {
+      if (bodyTooLarge) {
+        sendJson(response, 413, { error: 'Слишком большой запрос' });
+        return;
+      }
+      let place;
+      try {
+        place = normalizeReferencePlace({
+          ...JSON.parse(body),
+          id: crypto.randomBytes(12).toString('hex'),
+          source: 'manual',
+          evidence: 'manual'
+        });
+      } catch {
+        place = null;
+      }
+      if (!place) {
+        sendJson(response, 400, { error: 'Укажите название и корректные координаты места' });
+        return;
+      }
+      try {
+        const current = readLocationReference(LOCATION_REFERENCE_FILE);
+        writeLocationReference(LOCATION_REFERENCE_FILE, {
+          ...current,
+          generatedAt: new Date().toISOString(),
+          places: [...current.places, place]
+        });
+        sendJson(response, 201, place);
+      } catch (error) {
+        console.error(`Не удалось сохранить место: ${error.message}`);
+        sendJson(response, 500, { error: 'Не удалось сохранить место' });
+      }
+    });
+    return;
+  }
+
+  const locationReferenceMatch = requestUrl.pathname.match(/^\/api\/location-reference\/([^/]+)$/);
+  if (locationReferenceMatch && request.method === 'DELETE') {
+    let placeId;
+    try {
+      placeId = decodeURIComponent(locationReferenceMatch[1]);
+    } catch {
+      sendJson(response, 400, { error: 'Неверный идентификатор места' });
+      return;
+    }
+    try {
+      const result = deleteLocationReference(placeId);
+      if (!result) {
+        sendJson(response, 404, { error: 'Место не найдено' });
+        return;
+      }
+      sendJson(response, 200, result);
+    } catch (error) {
+      console.error(`Не удалось удалить место: ${error.message}`);
+      sendJson(response, 500, { error: 'Не удалось удалить место' });
+    }
     return;
   }
 
@@ -1536,6 +1917,25 @@ function handleRequest(request, response) {
     return;
   }
 
+  const hiddenPhotoLocationMatch = requestUrl.pathname.match(
+    /^\/api\/photo-locations\/([a-f0-9]{32})\/map$/
+  );
+  if (hiddenPhotoLocationMatch && request.method === 'DELETE') {
+    const photoId = hiddenPhotoLocationMatch[1];
+    const photo = PHOTO_ID_RE.test(photoId) && photos.find((candidate) => candidate.id === photoId);
+    if (!photo) {
+      sendJson(response, 404, { error: 'Фотография не найдена' });
+      return;
+    }
+    try {
+      sendJson(response, 200, hidePhotoLocation(photo));
+    } catch (error) {
+      console.error(`Не удалось убрать фотографию с карты: ${error.message}`);
+      sendJson(response, 500, { error: 'Не удалось убрать фотографию с карты' });
+    }
+    return;
+  }
+
   const photoLocationMatch = requestUrl.pathname.match(/^\/api\/photo-locations\/([a-f0-9]{32})$/);
   if (photoLocationMatch && ['PUT', 'DELETE'].includes(request.method)) {
     const photoId = photoLocationMatch[1];
@@ -1570,7 +1970,10 @@ function handleRequest(request, response) {
       }
       let coordinates;
       try {
-        coordinates = normalizeCoordinates(JSON.parse(body));
+        coordinates = normalizeLocationRecord({
+          ...JSON.parse(body),
+          source: 'manual'
+        });
       } catch {
         coordinates = null;
       }

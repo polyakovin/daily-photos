@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   archiveDestination,
+  archiveRetargetDestination,
   classifyArchivePath,
   normalizeArchiveStyle
 } = require('../src/electron/photo-archive-style');
@@ -49,6 +50,31 @@ test('formats destinations from a configured style', () => {
   }, '2024-07-21', '/tmp/Sun:set?.JPG'), {
     directoryParts: ['Photos', '2024', '07', '21'],
     stem: 'Sun set'
+  });
+});
+
+test('replaces the old date prefix instead of stacking dates in a moved filename', () => {
+  assert.deepEqual(archiveRetargetDestination({
+    type: 'full-date-name',
+    prefix: '',
+    dateSeparator: '-',
+    nameSeparator: ' ',
+    monthWidth: 2,
+    dayWidth: 2
+  }, '2024-08-03', '/archive/2024-07-21 Summer.jpg'), {
+    directoryParts: [],
+    stem: '2024-08-03 Summer'
+  });
+  assert.deepEqual(archiveRetargetDestination({
+    type: 'year-month-day-name',
+    prefix: '',
+    dateSeparator: '-',
+    nameSeparator: ' ',
+    monthWidth: 2,
+    dayWidth: 2
+  }, '2024-08-03', '/archive/2024/07/21 Summer.jpg'), {
+    directoryParts: ['2024', '08'],
+    stem: '03 Summer'
   });
 });
 
