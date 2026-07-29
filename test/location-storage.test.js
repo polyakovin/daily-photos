@@ -13,13 +13,19 @@ const {
 } = require('../src/server/photo-locations');
 const { writeLocationReference } = require('../src/server/location-reference');
 
-test('location data keeps the richest exact-coordinate place and remaps photo references', () => {
+test('location data keeps the richest map-coordinate place and remaps photo references', () => {
   const locations = new Map([
     ['2026/07/24.jpg', {
       latitude: 36.8002,
       longitude: 10.185765,
       source: 'manual',
       referenceId: 'organic-tunis'
+    }],
+    ['2026/07/25.jpg', {
+      latitude: 36.8002001,
+      longitude: 10.185765,
+      source: 'manual',
+      referenceId: 'nearby-duplicate'
     }]
   ]);
   const result = consolidateLocationData(locations, [{
@@ -43,18 +49,31 @@ test('location data keeps the richest exact-coordinate place and remaps photo re
     mediaCount: 3,
     visitDates: ['2024-07-24', '2025-07-24']
   }, {
-    id: 'nearby',
-    name: 'Рядом',
+    id: 'nearby-duplicate',
+    name: 'Почти та же точка',
     latitude: 36.8002001,
+    longitude: 10.185765,
+    source: 'manual',
+    evidence: 'manual'
+  }, {
+    id: 'separate',
+    name: 'Соседняя точка',
+    latitude: 36.80021,
     longitude: 10.185765,
     source: 'manual',
     evidence: 'manual'
   }]);
 
-  assert.equal(result.removedPlaceCount, 1);
-  assert.equal(result.remappedPhotoCount, 1);
+  assert.equal(result.removedPlaceCount, 2);
+  assert.equal(result.remappedPhotoCount, 2);
   assert.deepEqual(locations.get('2026/07/24.jpg'), {
     latitude: 36.8002,
+    longitude: 10.185765,
+    source: 'manual',
+    referenceId: 'home-office-tunis'
+  });
+  assert.deepEqual(locations.get('2026/07/25.jpg'), {
+    latitude: 36.8002001,
     longitude: 10.185765,
     source: 'manual',
     referenceId: 'home-office-tunis'
@@ -82,11 +101,18 @@ test('location data keeps the richest exact-coordinate place and remaps photo re
       observedAt: '2024-07-24',
       timestamp: '2024-07-24T10:00:00Z',
       collection: 'Избранное'
+    }, {
+      id: 'nearby-duplicate',
+      name: 'Почти та же точка',
+      latitude: 36.8002001,
+      longitude: 10.185765,
+      source: 'manual',
+      evidence: 'manual'
     }]
   }, {
-    id: 'nearby',
-    name: 'Рядом',
-    latitude: 36.8002001,
+    id: 'separate',
+    name: 'Соседняя точка',
+    latitude: 36.80021,
     longitude: 10.185765,
     source: 'manual',
     evidence: 'manual'

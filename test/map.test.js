@@ -8,7 +8,8 @@ const {
   photoFanLayout,
   photoStackPoints,
   project,
-  unproject
+  unproject,
+  visibleReferencePoints
 } = require('../src/renderer/map');
 
 test('map projection round-trips coordinates at different zoom levels', () => {
@@ -63,6 +64,49 @@ test('marker clusters use a world grid that does not depend on viewport movement
     second.map(({ key, points: grouped }) => [key, grouped.map((point) => point.id)])
   );
   assert.equal(first.find((group) => group.points.some((point) => point.id === 'a')).points.length, 2);
+});
+
+test('map hides unlinked reference markers already represented by a photo', () => {
+  const photos = [{
+    id: 'linked-photo',
+    latitude: 55.7558,
+    longitude: 37.6173,
+    locationReferenceId: 'linked-place'
+  }, {
+    id: 'unlinked-photo',
+    latitude: 41.7151,
+    longitude: 44.8271
+  }];
+  const places = [{
+    id: 'linked-place',
+    name: 'Москва',
+    latitude: 55.7558001,
+    longitude: 37.6173001
+  }, {
+    id: 'duplicate-unlinked-place',
+    name: 'Тбилиси',
+    latitude: 41.7151001,
+    longitude: 44.8271001
+  }, {
+    id: 'independent-place',
+    name: 'Батуми',
+    latitude: 41.6168,
+    longitude: 41.6367
+  }];
+
+  assert.deepEqual(
+    visibleReferencePoints(places, photos).map(({ id, mapPointType }) => ({
+      id,
+      mapPointType
+    })),
+    [{
+      id: 'linked-place',
+      mapPointType: 'reference'
+    }, {
+      id: 'independent-place',
+      mapPointType: 'reference'
+    }]
+  );
 });
 
 test('photo stacks include every photo in exact locations and zoomed-out clusters', () => {

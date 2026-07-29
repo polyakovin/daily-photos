@@ -14,8 +14,10 @@ const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
 const { suggestCalendarImportDate } = window.PhotoDayImportDate;
 const {
   InteractiveMap,
+  mapCoordinateKey,
   normalizeCoordinates: normalizeMapCoordinates,
-  parseCoordinateQuery
+  parseCoordinateQuery,
+  visibleReferencePoints
 } = window.PhotoDayMap;
 const {
   newestViewState,
@@ -1481,9 +1483,7 @@ function locatedPhotoCount() {
 }
 
 function distinctPlaceCount(points) {
-  return new Set(points.map((point) => (
-    `${Number(point.latitude).toFixed(4)}:${Number(point.longitude).toFixed(4)}`
-  ))).size;
+  return new Set(points.map(mapCoordinateKey).filter(Boolean)).size;
 }
 
 function referenceSourceLabel(place) {
@@ -1576,17 +1576,14 @@ function openMapFanPhoto(photo) {
   openViewer(dayPhotos, index);
 }
 
-function referenceMapPoints() {
-  return locationReferencePlaces.map((place) => ({
-    ...place,
-    mapPointType: 'reference'
-  }));
+function referenceMapPoints(locatedPhotos) {
+  return visibleReferencePoints(locationReferencePlaces, locatedPhotos);
 }
 
 function mapPointCollections() {
   const locatedPhotos = photos.filter(photoHasLocation);
   const photoPoints = locatedPhotos.map((photo) => ({ ...photo, mapPointType: 'photo' }));
-  const referencePoints = referenceMapPoints();
+  const referencePoints = referenceMapPoints(locatedPhotos);
   return { locatedPhotos, points: [...referencePoints, ...photoPoints] };
 }
 

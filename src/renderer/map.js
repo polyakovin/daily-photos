@@ -7,6 +7,7 @@
   const MAX_LATITUDE = 85.05112878;
   const MIN_ZOOM = 1;
   const MAX_ZOOM = 18;
+  const MAP_COORDINATE_DIGITS = 5;
   const WHEEL_ZOOM_THRESHOLD = 90;
   const WHEEL_ZOOM_COOLDOWN = 150;
 
@@ -64,6 +65,37 @@
     return normalizeCoordinates(point);
   }
 
+  function displayCoordinates(value) {
+    const coordinates = normalizeCoordinates(value);
+    if (!coordinates) return null;
+    return {
+      latitude: Number(coordinates.latitude.toFixed(MAP_COORDINATE_DIGITS)),
+      longitude: Number(coordinates.longitude.toFixed(MAP_COORDINATE_DIGITS))
+    };
+  }
+
+  function mapCoordinateKey(value) {
+    const coordinates = displayCoordinates(value);
+    return coordinates
+      ? `${coordinates.latitude.toFixed(MAP_COORDINATE_DIGITS)}:${coordinates.longitude.toFixed(MAP_COORDINATE_DIGITS)}`
+      : '';
+  }
+
+  function visibleReferencePoints(places, photos) {
+    const locatedPhotos = (Array.isArray(photos) ? photos : [])
+      .filter((photo) => mapCoordinateKey(photo));
+    const linkedReferenceIds = new Set(
+      locatedPhotos.map((photo) => photo.locationReferenceId).filter(Boolean)
+    );
+    const photoCoordinateKeys = new Set(locatedPhotos.map(mapCoordinateKey));
+    return (Array.isArray(places) ? places : [])
+      .filter((place) => (
+        linkedReferenceIds.has(place.id)
+        || !photoCoordinateKeys.has(mapCoordinateKey(place))
+      ))
+      .map((place) => ({ ...place, mapPointType: 'reference' }));
+  }
+
   function parseCoordinateQuery(value) {
     const query = String(value || '').trim().replace(/^geo:/i, '');
     let match = query.match(
@@ -85,7 +117,7 @@
   function clusterProjectedPoints(points, zoom, cellSize) {
     const groups = new Map();
     for (const point of Array.isArray(points) ? points : []) {
-      const location = pointCoordinates(point);
+      const location = displayCoordinates(point);
       if (!location) continue;
       const world = project(location.latitude, location.longitude, zoom);
       const cellX = Math.floor(world.x / cellSize);
@@ -492,9 +524,7 @@
         event.stopPropagation();
         const group = marker.photoDayGroup;
         if (!group) return;
-        const uniqueLocations = new Set(group.points.map((point) => (
-          `${Number(point.latitude).toFixed(5)}:${Number(point.longitude).toFixed(5)}`
-        )));
+        const uniqueLocations = new Set(group.points.map(mapCoordinateKey));
         if (uniqueLocations.size > 1 && this.zoom < 15) {
           this.setCenter(
             unproject(group.worldX, group.worldY, this.zoom),
@@ -694,12 +724,14 @@
     MAX_ZOOM,
     MIN_ZOOM,
     clusterProjectedPoints,
+    mapCoordinateKey,
     normalizeCoordinates,
     normalizeLongitude,
     parseCoordinateQuery,
     photoFanLayout,
     photoStackPoints,
     project,
-    unproject
+    unproject,
+    visibleReferencePoints
   };
 }));

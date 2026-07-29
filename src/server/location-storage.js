@@ -9,6 +9,7 @@ const {
 } = require('./photo-locations');
 
 const LOCATION_DATA_DOCUMENT_VERSION = 2;
+const LOCATION_COORDINATE_DIGITS = 5;
 const EVIDENCE_PRIORITY = new Map([
   ['manual', 6],
   ['visited', 5],
@@ -102,11 +103,15 @@ function normalizedReferencePlaces(places) {
   return serializeLocationReference({ version: 1, places }).places;
 }
 
+function locationCoordinateKey(place) {
+  return `${place.latitude.toFixed(LOCATION_COORDINATE_DIGITS)}:${place.longitude.toFixed(LOCATION_COORDINATE_DIGITS)}`;
+}
+
 function consolidateLocationData(locations, places) {
   const normalizedPlaces = normalizedReferencePlaces(places);
   const groups = new Map();
   normalizedPlaces.forEach((place, index) => {
-    const key = `${place.latitude}:${place.longitude}`;
+    const key = locationCoordinateKey(place);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push({ place, index });
   });
