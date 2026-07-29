@@ -105,17 +105,6 @@
     return dateKey(parsed);
   }
 
-  function adjustDateByArrow(value, key, bounds = {}) {
-    const monthOffset = {
-      ArrowLeft: -1,
-      ArrowRight: 1,
-      ArrowUp: 12,
-      ArrowDown: -12
-    }[key];
-    if (!monthOffset || !dateFromKey(value)) return '';
-    return clampDate(addCalendarMonths(value, monthOffset), bounds);
-  }
-
   function buildCalendarMonth(year, month) {
     const firstDay = new Date(year, month, 1);
     firstDay.setDate(firstDay.getDate() - ((firstDay.getDay() + 6) % 7));
@@ -169,9 +158,11 @@
       this.popover.hidden = true;
       this.popover.innerHTML = `
         <div class="date-picker-header">
+          <button class="date-picker-nav date-picker-year-nav date-picker-previous-year" type="button" aria-label="Предыдущий год">↑</button>
           <button class="date-picker-nav date-picker-previous" type="button" aria-label="Предыдущий месяц">←</button>
           <strong class="date-picker-month" aria-live="polite"></strong>
           <button class="date-picker-nav date-picker-next" type="button" aria-label="Следующий месяц">→</button>
+          <button class="date-picker-nav date-picker-year-nav date-picker-next-year" type="button" aria-label="Следующий год">↓</button>
         </div>
         <div class="date-picker-weekdays" role="row"></div>
         <div class="date-picker-grid" role="grid"></div>
@@ -179,12 +170,14 @@
           <button class="date-picker-today" type="button">Сегодня</button>
           <button class="date-picker-clear" type="button">Очистить</button>
         </div>
-        <p class="date-picker-help" id="${this.id}-help">В календаре: стрелки — дни · Page Up/Down — месяцы</p>
+        <p class="date-picker-help" id="${this.id}-help">Кнопки ←/→ — месяцы · ↑/↓ — годы · В сетке стрелки — дни</p>
       `;
       this.monthLabel = this.popover.querySelector('.date-picker-month');
       this.grid = this.popover.querySelector('.date-picker-grid');
+      this.previousYearButton = this.popover.querySelector('.date-picker-previous-year');
       this.previousButton = this.popover.querySelector('.date-picker-previous');
       this.nextButton = this.popover.querySelector('.date-picker-next');
+      this.nextYearButton = this.popover.querySelector('.date-picker-next-year');
       this.todayButton = this.popover.querySelector('.date-picker-today');
       this.clearButton = this.popover.querySelector('.date-picker-clear');
       this.grid.setAttribute('aria-describedby', `${this.id}-help`);
@@ -193,7 +186,7 @@
       const formatDescription = document.createElement('span');
       formatDescription.id = `${this.id}-format`;
       formatDescription.className = 'sr-only';
-      formatDescription.textContent = 'Формат даты: день, месяц и год. Например, 9.7.1990. В поле стрелки влево и вправо меняют месяц, вверх и вниз — год.';
+      formatDescription.textContent = 'Формат даты: день, месяц и год. Например, 9.7.1990.';
       this.wrapper.append(formatDescription);
       const describedBy = (this.input.getAttribute('aria-describedby') || '').trim();
       this.input.setAttribute('aria-describedby', [describedBy, formatDescription.id].filter(Boolean).join(' '));
@@ -227,11 +220,6 @@
           this.close();
         } else if (event.key === 'Enter') {
           this.commitInput();
-        } else if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-          const next = adjustDateByArrow(this._value, event.key, this.bounds());
-          if (!next) return;
-          event.preventDefault();
-          if (next !== this._value) this.setValue(next, { notify: true });
         }
       });
 
@@ -239,8 +227,10 @@
         if (this.isOpen()) this.close();
         else this.open();
       });
+      this.previousYearButton.addEventListener('click', () => this.changeMonth(-12));
       this.previousButton.addEventListener('click', () => this.changeMonth(-1));
       this.nextButton.addEventListener('click', () => this.changeMonth(1));
+      this.nextYearButton.addEventListener('click', () => this.changeMonth(12));
       this.todayButton.addEventListener('click', () => this.select(dateKey(new Date())));
       this.clearButton.addEventListener('click', () => this.select(''));
       this.grid.addEventListener('keydown', (event) => this.handleGridKeydown(event));
@@ -442,8 +432,12 @@
 
       const previousMonthEnd = dateKey(new Date(year, month, 0));
       const nextMonthStart = dateKey(new Date(year, month + 1, 1));
+      const previousYearEnd = dateKey(new Date(year, 0, 0));
+      const nextYearStart = dateKey(new Date(year + 1, 0, 1));
+      this.previousYearButton.disabled = Boolean(bounds.min && previousYearEnd < bounds.min);
       this.previousButton.disabled = Boolean(bounds.min && previousMonthEnd < bounds.min);
       this.nextButton.disabled = Boolean(bounds.max && nextMonthStart > bounds.max);
+      this.nextYearButton.disabled = Boolean(bounds.max && nextYearStart > bounds.max);
       this.todayButton.disabled = !dateWithinBounds(today, bounds);
     }
 
@@ -503,8 +497,10 @@
 
     trapTabKey(event) {
       const controls = [
+        this.previousYearButton,
         this.previousButton,
         this.nextButton,
+        this.nextYearButton,
         this.grid.querySelector('.date-picker-day[tabindex="0"]'),
         this.todayButton,
         this.clearButton.hidden ? null : this.clearButton
@@ -558,7 +554,6 @@
 
   return {
     DatePicker,
-    adjustDateByArrow,
     addCalendarDays,
     addCalendarMonths,
     buildCalendarMonth,

@@ -1,7 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-  adjustDateByArrow,
   addCalendarDays,
   addCalendarMonths,
   buildCalendarMonth,
@@ -38,15 +37,4 @@ test('moves calendar focus without skipping across short months', () => {
   assert.equal(addCalendarMonths('2024-01-31', 1), '2024-02-29');
   assert.equal(addCalendarMonths('2025-01-31', 1), '2025-02-28');
   assert.equal(addCalendarMonths('2024-02-29', 12), '2025-02-28');
-});
-
-test('changes months horizontally and years vertically from the date field', () => {
-  assert.equal(adjustDateByArrow('2026-07-29', 'ArrowLeft'), '2026-06-29');
-  assert.equal(adjustDateByArrow('2026-07-29', 'ArrowRight'), '2026-08-29');
-  assert.equal(adjustDateByArrow('2026-07-29', 'ArrowUp'), '2027-07-29');
-  assert.equal(adjustDateByArrow('2026-07-29', 'ArrowDown'), '2025-07-29');
-  assert.equal(adjustDateByArrow('2024-02-29', 'ArrowUp'), '2025-02-28');
-  assert.equal(adjustDateByArrow('2026-07-29', 'ArrowRight', { max: '2026-07-31' }), '2026-07-31');
-  assert.equal(adjustDateByArrow('2026-07-29', 'Home'), '');
-  assert.equal(adjustDateByArrow('', 'ArrowRight'), '');
 });

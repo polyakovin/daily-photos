@@ -45,7 +45,19 @@ test('десктопный сервер отдаёт вспомогательн�
   const datePickerResponse = await fetch(`${server.url}/date-picker.js`);
   assert.equal(datePickerResponse.status, 200);
   assert.match(datePickerResponse.headers.get('content-type'), /^text\/javascript/);
-  assert.match(await datePickerResponse.text(), /createDatePicker/);
+  const datePickerScript = await datePickerResponse.text();
+  assert.match(datePickerScript, /createDatePicker/);
+  assert.match(datePickerScript, /aria-label="Предыдущий год">↑/);
+  assert.match(datePickerScript, /aria-label="Следующий год">↓/);
+  assert.match(
+    datePickerScript,
+    /previousYearButton\.addEventListener\('click', \(\) => this\.changeMonth\(-12\)\)/
+  );
+  assert.match(
+    datePickerScript,
+    /nextYearButton\.addEventListener\('click', \(\) => this\.changeMonth\(12\)\)/
+  );
+  assert.doesNotMatch(datePickerScript, /adjustDateByArrow/);
 
   const mapResponse = await fetch(`${server.url}/map.js`);
   assert.equal(mapResponse.status, 200);
@@ -74,7 +86,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /src="\/date-picker\.js\?v=2"/);
+  assert.match(appHtml, /src="\/date-picker\.js\?v=3"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
