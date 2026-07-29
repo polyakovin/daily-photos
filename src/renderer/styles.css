@@ -664,6 +664,168 @@ body.is-photo-dragging .photo-drop-card { transform: none; }
 .photo-drop-card strong { margin-top: 8px; font-family: Georgia, serif; font-size: 30px; font-weight: 400; letter-spacing: -.035em; }
 .photo-drop-card small { color: var(--muted); font-size: 13px; }
 
+.date-picker {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  color: var(--ink);
+  background: rgba(255, 255, 255, .72);
+  border: 1px solid rgba(22, 58, 48, .18);
+  border-radius: 13px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .42) inset;
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+.date-picker:hover { background: rgba(255, 255, 255, .92); border-color: rgba(22, 58, 48, .3); }
+.date-picker:focus-within {
+  border-color: var(--forest);
+  box-shadow: 0 0 0 3px rgba(213, 155, 43, .24), 0 1px 0 rgba(255, 255, 255, .42) inset;
+}
+.date-picker:has(input.is-error),
+.date-picker:has(input[aria-invalid="true"]) {
+  border-color: #a84232;
+  box-shadow: 0 0 0 3px rgba(168, 66, 50, .12);
+}
+.date-picker input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0 12px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: 700 13px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .035em;
+}
+.date-picker input::placeholder { color: rgba(22, 58, 48, .42); font-size: 11px; letter-spacing: .05em; }
+.date-picker input:disabled { cursor: wait; opacity: .58; }
+.date-picker-toggle {
+  width: 43px;
+  min-width: 43px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #587166;
+  background: rgba(115, 150, 123, .08);
+  border: 0;
+  border-left: 1px solid rgba(22, 58, 48, .12);
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease;
+}
+.date-picker-toggle:hover { color: var(--forest); background: rgba(115, 150, 123, .18); }
+.date-picker-toggle:focus-visible { outline: 2px solid var(--forest); outline-offset: -4px; border-radius: 8px; }
+.date-picker-toggle:disabled { cursor: wait; opacity: .5; }
+.date-picker-toggle svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+
+.date-picker-popover {
+  position: fixed;
+  inset: auto;
+  z-index: 2147483647;
+  width: min(320px, calc(100vw - 24px));
+  margin: 0;
+  padding: 14px;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 88% 8%, rgba(213, 155, 43, .12), transparent 35%),
+    #fffdf7;
+  border: 1px solid rgba(22, 58, 48, .16);
+  border-radius: 20px;
+  box-shadow: 0 22px 62px rgba(12, 41, 33, .24), 0 2px 8px rgba(12, 41, 33, .12);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.date-picker-popover[hidden] { display: none; }
+.date-picker-header { display: grid; grid-template-columns: 38px minmax(0, 1fr) 38px; align-items: center; gap: 6px; margin-bottom: 11px; }
+.date-picker-month { font-family: Georgia, "Times New Roman", serif; font-size: 20px; font-weight: 400; text-align: center; letter-spacing: -.02em; }
+.date-picker-nav {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--forest);
+  background: rgba(115, 150, 123, .1);
+  border: 1px solid rgba(22, 58, 48, .11);
+  border-radius: 11px;
+  font-size: 18px;
+  cursor: pointer;
+}
+.date-picker-nav:hover { background: rgba(115, 150, 123, .2); }
+.date-picker-nav:disabled { cursor: default; opacity: .28; }
+.date-picker-weekdays,
+.date-picker-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.date-picker-weekdays { margin-bottom: 4px; }
+.date-picker-weekdays span {
+  display: grid;
+  place-items: center;
+  height: 24px;
+  color: #7a857d;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.date-picker-weekdays span:nth-last-child(-n+2) { color: #a05d52; }
+.date-picker-grid { display: grid; gap: 2px; }
+.date-picker-day {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.date-picker-week .date-picker-day:nth-child(n+6) { color: #9a5148; }
+.date-picker-day:hover { background: rgba(115, 150, 123, .14); border-color: rgba(22, 58, 48, .12); }
+.date-picker-day:focus-visible { outline: 3px solid rgba(213, 155, 43, .48); outline-offset: 0; }
+.date-picker-day.is-outside { color: rgba(109, 119, 111, .42); }
+.date-picker-day.is-today::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  background: var(--today);
+  border-radius: 50%;
+  transform: translateX(-50%);
+}
+.date-picker-day.is-selected {
+  color: var(--cream);
+  background: var(--forest);
+  border-color: var(--forest);
+  box-shadow: 0 5px 12px rgba(22, 58, 48, .2);
+  font-weight: 800;
+}
+.date-picker-day.is-selected:hover { background: #245648; }
+.date-picker-day.is-selected::after { background: #efb84c; }
+.date-picker-day:disabled { color: rgba(109, 119, 111, .2); background: transparent; border-color: transparent; cursor: default; box-shadow: none; }
+.date-picker-footer { min-height: 33px; margin-top: 10px; padding-top: 10px; display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid rgba(22, 58, 48, .1); }
+.date-picker-footer button {
+  min-height: 32px;
+  padding: 0 11px;
+  color: var(--forest);
+  background: rgba(115, 150, 123, .1);
+  border: 1px solid rgba(22, 58, 48, .1);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.date-picker-footer button:hover { background: rgba(115, 150, 123, .2); }
+.date-picker-footer button:disabled { cursor: default; opacity: .35; }
+.date-picker-clear { margin-left: auto; }
+.date-picker-clear[hidden] { display: none; }
+.date-picker-help { margin: 8px 2px 0; color: #7a857d; font-size: 8px; line-height: 1.35; text-align: center; }
+
 .photo-import-dialog {
   width: 100%;
   max-width: none;
@@ -708,18 +870,7 @@ body.is-photo-dragging .photo-drop-card { transform: none; }
 .photo-import-card h1 { margin: 0; padding-right: 32px; font-family: Georgia, serif; font-size: 38px; font-weight: 400; line-height: 1.05; letter-spacing: -.04em; }
 .photo-import-summary { margin: 15px 0 22px; color: var(--muted); font-size: 13px; line-height: 1.55; }
 .photo-import-date-field { display: grid; gap: 7px; }
-.photo-import-date-field > span { color: var(--ink); font-size: 11px; font-weight: 780; }
-.photo-import-date-field input {
-  width: 100%;
-  height: 50px;
-  padding: 0 15px;
-  color: var(--ink);
-  background: rgba(255, 255, 255, .7);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  font: 700 14px/1 Inter, ui-sans-serif, system-ui, sans-serif;
-}
-.photo-import-date-field input:focus { border-color: rgba(22, 58, 48, .4); outline: 3px solid rgba(115, 150, 123, .2); }
+.photo-import-date-field > label { color: var(--ink); font-size: 11px; font-weight: 780; }
 .photo-import-date-field small { color: var(--muted); font-size: 10px; line-height: 1.4; }
 .photo-import-error { margin: 13px 0 0; color: #a62f29; font-size: 12px; line-height: 1.45; }
 .photo-import-actions { margin-top: 24px; display: flex; justify-content: flex-end; gap: 9px; }
@@ -1647,13 +1798,9 @@ body.presentation-mode .timeline-item img.is-presentation-blurred { filter: blur
 }
 .life-toolbar h2 { margin: 0; font-family: Georgia, serif; font-size: 34px; font-weight: 400; letter-spacing: -0.035em; }
 .life-heading { min-width: 220px; }
-.life-birth-date { width: 132px; min-width: 132px; display: grid; gap: 4px; color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
-.life-birth-date input { width: 132px; height: 34px; padding: 0 10px; color: var(--forest); background: rgba(169, 188, 158, .12); border: 1px solid rgba(22, 58, 48, .18); border-radius: 9px; font-family: inherit; font-size: 12px; font-weight: 700; line-height: 1; letter-spacing: .04em; font-variant-numeric: tabular-nums; cursor: text; outline: none; text-transform: none; transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease; }
-.life-birth-date input::placeholder { color: rgba(22, 58, 48, .38); font-size: 10px; letter-spacing: .04em; }
-.life-birth-date input:hover { background: rgba(169, 188, 158, .2); border-color: rgba(22, 58, 48, .3); }
-.life-birth-date input:focus-visible { border-color: var(--forest); box-shadow: 0 0 0 3px rgba(213, 155, 43, .28); }
-.life-birth-date input.is-error { border-color: #a84232; box-shadow: 0 0 0 3px rgba(168, 66, 50, .12); }
-.life-birth-date input:disabled { cursor: wait; opacity: .62; }
+.life-birth-date { width: 174px; min-width: 174px; display: grid; gap: 4px; color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.life-birth-date .date-picker { background: rgba(169, 188, 158, .12); }
+.life-birth-date .date-picker:hover { background: rgba(169, 188, 158, .2); }
 .life-birth-date-status { min-height: 12px; display: block; overflow: hidden; color: var(--muted); font-size: 8px; font-weight: 600; line-height: 1.4; letter-spacing: 0; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }
 .life-birth-date-status.is-error { color: #a84232; }
 .life-toolbar-actions { display: flex; align-items: center; gap: 14px; }
@@ -2012,8 +2159,9 @@ body .viewer-media img.is-loaded.is-press-zoomable {
 .viewer-date-edit[hidden] { display: none; }
 .viewer-date-form { margin-top: 8px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .viewer-date-form[hidden] { display: none; }
-.viewer-date-form input { min-height: 36px; padding: 0 10px; color: var(--ink); color-scheme: light; background: rgba(255,255,255,.94); border: 1px solid rgba(255,255,255,.28); border-radius: 10px; font: inherit; font-size: 12px; }
+.viewer-date-form > .date-picker { width: 180px; flex: 0 1 180px; background: rgba(255,255,255,.94); border-color: rgba(255,255,255,.28); }
 .viewer-date-form button { min-height: 36px; padding: 0 11px; border-radius: 999px; font-size: 10px; font-weight: 750; cursor: pointer; }
+.viewer-date-form .date-picker-toggle { min-height: 0; padding: 0; border-radius: 0; }
 .viewer-date-save { color: var(--forest); background: #efb84c; border: 1px solid #efb84c; }
 .viewer-date-cancel { color: var(--cream); background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.24); }
 .viewer-date-form button:disabled { cursor: wait; opacity: .58; }
@@ -2193,7 +2341,35 @@ body .viewer-media img.is-loaded.is-press-zoomable {
   box-shadow: 0 30px 110px rgba(0, 0, 0, .58);
 }
 :root[data-theme="dark"] .photo-drop-card { border-color: rgba(168, 213, 185, .34); }
-:root[data-theme="dark"] .photo-import-date-field input { background: rgba(225, 239, 230, .06); border-color: rgba(216, 232, 222, .16); }
+:root[data-theme="dark"] .date-picker {
+  color: var(--ink);
+  background: rgba(225, 239, 230, .07);
+  border-color: rgba(216, 232, 222, .17);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .03) inset;
+}
+:root[data-theme="dark"] .date-picker:hover { background: rgba(225, 239, 230, .11); border-color: rgba(216, 232, 222, .28); }
+:root[data-theme="dark"] .date-picker input::placeholder { color: rgba(213, 228, 219, .42); }
+:root[data-theme="dark"] .date-picker-toggle { color: #b6cabf; background: rgba(216, 232, 222, .06); border-left-color: rgba(216, 232, 222, .12); }
+:root[data-theme="dark"] .date-picker-toggle:hover { color: var(--ink); background: rgba(216, 232, 222, .12); }
+:root[data-theme="dark"] .date-picker-popover {
+  color: #e5efe8;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(213, 155, 43, .12), transparent 35%),
+    #19241f;
+  border-color: rgba(216, 232, 222, .16);
+  box-shadow: 0 24px 68px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .32);
+}
+:root[data-theme="dark"] .date-picker-nav,
+:root[data-theme="dark"] .date-picker-footer button { color: #d7e7dd; background: rgba(216, 232, 222, .08); border-color: rgba(216, 232, 222, .11); }
+:root[data-theme="dark"] .date-picker-nav:hover,
+:root[data-theme="dark"] .date-picker-footer button:hover { background: rgba(216, 232, 222, .15); }
+:root[data-theme="dark"] .date-picker-day { color: #e2ece6; }
+:root[data-theme="dark"] .date-picker-week .date-picker-day:nth-child(n+6) { color: #e7a198; }
+:root[data-theme="dark"] .date-picker-day.is-outside { color: rgba(216, 232, 222, .3); }
+:root[data-theme="dark"] .date-picker-day:hover { background: rgba(216, 232, 222, .1); border-color: rgba(216, 232, 222, .1); }
+:root[data-theme="dark"] .date-picker-day.is-selected { color: #17231d; background: #b8d2c2; border-color: #b8d2c2; }
+:root[data-theme="dark"] .date-picker-day.is-selected:hover { background: #cae0d3; }
+:root[data-theme="dark"] .date-picker-footer { border-top-color: rgba(216, 232, 222, .1); }
 :root[data-theme="dark"] .map-photo-picker-item { background: rgba(225, 239, 230, .07); border-color: rgba(216, 232, 222, .14); }
 :root[data-theme="dark"] .map-place-picker-item { background: rgba(225, 239, 230, .07); border-color: rgba(216, 232, 222, .14); }
 :root[data-theme="dark"] .map-place-picker-item.is-empty { background: rgba(154, 88, 53, .2); border-color: rgba(245, 211, 177, .18); }
@@ -2290,9 +2466,8 @@ body .viewer-media img.is-loaded.is-press-zoomable {
 :root[data-theme="dark"] .map-search-results > button:focus-visible { background: rgba(216, 232, 222, .1); }
 :root[data-theme="dark"] .map-summary strong { color: #a8d5b9; }
 
-:root[data-theme="dark"] .life-birth-date input { color: var(--ink); background: rgba(154, 183, 165, .1); border-color: rgba(216, 232, 222, .16); }
-:root[data-theme="dark"] .life-birth-date input::placeholder { color: rgba(213, 228, 219, .42); }
-:root[data-theme="dark"] .life-birth-date input:hover { background: rgba(154, 183, 165, .16); border-color: rgba(216, 232, 222, .28); }
+:root[data-theme="dark"] .life-birth-date .date-picker { background: rgba(154, 183, 165, .1); }
+:root[data-theme="dark"] .life-birth-date .date-picker:hover { background: rgba(154, 183, 165, .16); }
 :root[data-theme="dark"] .life-summary { color: #b7dcc5; background: rgba(120, 179, 142, .12); }
 :root[data-theme="dark"] .life-remaining-toggle i { background: rgba(216, 232, 222, .17); }
 :root[data-theme="dark"] .life-remaining-toggle input:checked + i { background: #4c886f; }
@@ -2421,8 +2596,7 @@ body .viewer-media img.is-loaded.is-press-zoomable {
   .life-toolbar { align-items: flex-start; flex-direction: column; gap: 14px; padding: 22px 16px 18px; }
   .life-toolbar h2 { font-size: 25px; }
   .life-heading { width: 100%; min-width: 0; }
-  .life-birth-date { width: 132px; min-width: 132px; order: 0; }
-  .life-birth-date input { width: 132px; }
+  .life-birth-date { width: min(174px, 100%); min-width: min(174px, 100%); order: 0; }
   .life-toolbar-actions { width: 100%; align-items: flex-start; flex-direction: column; flex-wrap: nowrap; gap: 9px; }
   .life-summary { order: 1; }
   .life-remaining-toggle { width: auto; order: 2; justify-content: flex-start; }
@@ -2468,7 +2642,7 @@ body .viewer-media img.is-loaded.is-press-zoomable {
   .viewer-caption { align-items: stretch; flex-direction: column; padding: 72px 17px 17px; }
   .viewer-caption h2 { font-size: 21px; }
   .viewer-date-control { min-width: 0; }
-  .viewer-date-form input { flex: 1 1 150px; }
+  .viewer-date-form > .date-picker { width: auto; flex: 1 1 180px; }
   .viewer-panel.is-editing-date .viewer-actions { display: none; }
   .viewer-actions { justify-content: space-between; flex-wrap: wrap; }
   .viewer-location-button { order: -1; }

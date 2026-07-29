@@ -42,6 +42,11 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(importDateResponse.headers.get('content-type'), /^text\/javascript/);
   assert.match(await importDateResponse.text(), /suggestCalendarImportDate/);
 
+  const datePickerResponse = await fetch(`${server.url}/date-picker.js`);
+  assert.equal(datePickerResponse.status, 200);
+  assert.match(datePickerResponse.headers.get('content-type'), /^text\/javascript/);
+  assert.match(await datePickerResponse.text(), /createDatePicker/);
+
   const mapResponse = await fetch(`${server.url}/map.js`);
   assert.equal(mapResponse.status, 200);
   assert.match(mapResponse.headers.get('content-type'), /^text\/javascript/);
@@ -67,7 +72,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerLocationSearch"/);
   assert.match(appHtml, /id="viewerDateEdit"/);
   assert.match(appHtml, /id="viewerDateForm"/);
-  assert.match(appHtml, /id="viewerDateInput" type="date" min="1900-01-01"/);
+  assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
+  assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
+  assert.match(appHtml, /src="\/date-picker\.js\?v=1"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -112,6 +119,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.map-assignment-actions\s*\{\s*grid-column:\s*1/);
   assert.match(styles, /\.about-dialog/);
   assert.match(styles, /\.about-stats/);
+  assert.match(styles, /\.date-picker-popover/);
+  assert.match(styles, /\.date-picker-day\.is-selected/);
 
   const appScriptResponse = await fetch(`${server.url}/app.js`);
   assert.equal(appScriptResponse.status, 200);

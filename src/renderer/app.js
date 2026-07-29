@@ -12,6 +12,7 @@ const LIFE_BIRTH_DATE_STORAGE_KEY = 'photo-day:birth-date';
 const DATE_KEY_PATTERN = /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
 const { suggestCalendarImportDate } = window.PhotoDayImportDate;
+const { createDatePicker } = window.PhotoDayDatePicker;
 const {
   InteractiveMap,
   normalizeCoordinates: normalizeMapCoordinates,
@@ -181,6 +182,10 @@ const photoImportSummary = document.querySelector('#photoImportSummary');
 const photoImportDate = document.querySelector('#photoImportDate');
 const photoImportDateHint = document.querySelector('#photoImportDateHint');
 const photoImportError = document.querySelector('#photoImportError');
+const lifeBirthDatePicker = createDatePicker(lifeBirthDateInput);
+const viewerDatePicker = createDatePicker(viewerDateInput);
+const photoImportDatePicker = createDatePicker(photoImportDate);
+lifeBirthDatePicker.setMax(localDateKey());
 
 let photos = [];
 let byDate = new Map();
@@ -605,6 +610,7 @@ function closePhotoImportDialog() {
   if (photoImportInProgress) return;
   photoImportSuggestionSequence += 1;
   pendingPhotoImportPaths = [];
+  photoImportDatePicker.close();
   if (photoImportDialog.open) photoImportDialog.close();
 }
 
@@ -626,8 +632,8 @@ async function showPhotoImportDialog(files) {
   const skippedCount = allFiles.length - paths.length;
   const today = localDateKey();
   const calendarSuggestion = visibleCalendarImportDate();
-  photoImportDate.value = today;
-  photoImportDate.max = today;
+  photoImportDatePicker.setMax(today);
+  photoImportDatePicker.setValue(today);
   photoImportSummary.textContent = paths.length
     ? `${photoCountLabel(paths.length)} ${paths.length === 1 ? 'будет сохранена' : 'будут сохранены'} в «${desktopArchiveState.name}».`
     : 'Не удалось найти фотографии в поддерживаемом формате.';
@@ -645,7 +651,7 @@ async function showPhotoImportDialog(files) {
   photoImportCancel.disabled = false;
   photoImportClose.disabled = false;
   if (!photoImportDialog.open) photoImportDialog.showModal();
-  photoImportDate.focus();
+  photoImportDatePicker.focus();
 
   if (!paths.length) return;
   const suggestionSequence = ++photoImportSuggestionSequence;
@@ -653,17 +659,17 @@ async function showPhotoImportDialog(files) {
     const suggestedDate = await desktopBridge.suggestPhotoDate(paths);
     if (suggestionSequence !== photoImportSuggestionSequence || !photoImportDialog.open) return;
     if (suggestedDate) {
-      if (photoImportDate.value === today) {
-        photoImportDate.value = suggestedDate;
+      if (photoImportDatePicker.value === today) {
+        photoImportDatePicker.setValue(suggestedDate);
         photoImportDateHint.textContent = 'Дата предложена из EXIF фотографии. Её можно изменить.';
       } else {
         photoImportDateHint.textContent = 'Дата найдена в EXIF, но оставлена выбранная вами дата.';
       }
     } else {
-      if (calendarSuggestion && photoImportDate.value === today) {
-        photoImportDate.value = calendarSuggestion;
+      if (calendarSuggestion && photoImportDatePicker.value === today) {
+        photoImportDatePicker.setValue(calendarSuggestion);
         photoImportDateHint.textContent = `В EXIF дата не найдена — предложена последняя свободная дата из ${visibleCalendarPeriodLabel()}.`;
-      } else if (photoImportDate.value !== today) {
+      } else if (photoImportDatePicker.value !== today) {
         photoImportDateHint.textContent = 'В EXIF дата не найдена — оставлена выбранная вами дата.';
       } else {
         photoImportDateHint.textContent = 'В EXIF дата не найдена — предложена сегодняшняя. Её можно изменить.';
@@ -932,32 +938,12 @@ function isValidBirthDate(value) {
   return dateKey(date) === value && utcDayNumber(date) <= utcDayNumber(new Date());
 }
 
-function formatBirthDateInput(value) {
-  if (!isValidBirthDate(value)) return '';
-  const [year, month, day] = value.split('-');
-  return `${day}.${month}.${year}`;
-}
-
-function parseBirthDateInput(value) {
-  const match = value.trim().match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-  if (!match) return '';
-  const candidate = `${match[3]}-${match[2]}-${match[1]}`;
-  return isValidBirthDate(candidate) ? candidate : '';
-}
-
-function maskBirthDateInput(value) {
-  const digits = value.replace(/\D/g, '').slice(0, 8);
-  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)]
-    .filter(Boolean)
-    .join('.');
-}
-
 function earliestPhotoDate() {
   return [...byDate.keys()].sort()[0] || '';
 }
 
 function updateLifeBirthDateUi(message = '', isError = false) {
-  lifeBirthDateInput.value = formatBirthDateInput(birthDate);
+  lifeBirthDatePicker.setValue(birthDate);
   let status = message;
   if (!status && birthDate) status = `Отсчёт с ${formatDate(birthDate)}`;
   if (!status) {
@@ -978,13 +964,13 @@ function showLifeBirthDateError(message) {
 }
 
 function commitBirthDateInput() {
-  const value = lifeBirthDateInput.value.trim();
-  if (!value) {
+  const rawValue = lifeBirthDateInput.value.trim();
+  if (!rawValue) {
     if (birthDate) saveBirthDate('');
     else updateLifeBirthDateUi();
     return;
   }
-  const parsedValue = parseBirthDateInput(value);
+  const parsedValue = lifeBirthDatePicker.value;
   if (!parsedValue) {
     showLifeBirthDateError('Проверьте дату');
     return;
@@ -1017,7 +1003,7 @@ async function saveBirthDate(value) {
     return;
   }
 
-  lifeBirthDateInput.disabled = true;
+  lifeBirthDatePicker.disabled = true;
   lifeBirthDateStatus.classList.remove('is-error');
   lifeBirthDateStatus.textContent = 'Сохраняем…';
   try {
@@ -1035,7 +1021,7 @@ async function saveBirthDate(value) {
     birthDate = previousBirthDate;
     updateLifeBirthDateUi('Не удалось сохранить дату', true);
   } finally {
-    lifeBirthDateInput.disabled = false;
+    lifeBirthDatePicker.disabled = false;
   }
 }
 
@@ -3562,6 +3548,7 @@ function canChangeViewerPhotoDate(photo = activePhotos[activeIndex]) {
 }
 
 function closeViewerDateEditor() {
+  viewerDatePicker.close();
   viewerPanel.classList.remove('is-editing-date');
   viewerDateForm.hidden = true;
   viewerDateEdit.hidden = !canChangeViewerPhotoDate();
@@ -3572,19 +3559,14 @@ function closeViewerDateEditor() {
 function openViewerDateEditor() {
   const photo = activePhotos[activeIndex];
   if (!canChangeViewerPhotoDate(photo) || viewerDateSaving) return;
-  viewerDateInput.value = photo.date;
-  viewerDateInput.max = localDateKey();
+  viewerDatePicker.setMax(localDateKey());
+  viewerDatePicker.setValue(photo.date);
   viewerPanel.classList.add('is-editing-date');
   viewerDateForm.hidden = false;
   viewerDateEdit.hidden = true;
   viewerDateStatus.textContent = '';
   viewerDateStatus.classList.remove('is-error');
-  viewerDateInput.focus();
-  try {
-    viewerDateInput.showPicker?.();
-  } catch {
-    // Поле уже сфокусировано и остаётся доступно в браузерах без программного календаря.
-  }
+  viewerDatePicker.focus();
 }
 
 function isValidViewerPhotoDate(value) {
@@ -3595,7 +3577,7 @@ function isValidViewerPhotoDate(value) {
 
 async function changeViewerPhotoDate() {
   const photo = activePhotos[activeIndex];
-  const nextDate = viewerDateInput.value;
+  const nextDate = viewerDatePicker.value;
   if (!canChangeViewerPhotoDate(photo) || viewerDateSaving) return;
   if (!isValidViewerPhotoDate(nextDate)) {
     viewerDateStatus.textContent = 'Выберите корректную дату не позже сегодняшней';
@@ -3608,7 +3590,7 @@ async function changeViewerPhotoDate() {
   }
 
   viewerDateSaving = true;
-  viewerDateInput.disabled = true;
+  viewerDatePicker.disabled = true;
   viewerDateSave.disabled = true;
   viewerDateCancel.disabled = true;
   viewerDateStatus.textContent = 'Переносим файл…';
@@ -3631,7 +3613,7 @@ async function changeViewerPhotoDate() {
     viewerDateStatus.classList.add('is-error');
   } finally {
     viewerDateSaving = false;
-    viewerDateInput.disabled = false;
+    viewerDatePicker.disabled = false;
     viewerDateSave.disabled = false;
     viewerDateCancel.disabled = false;
   }
@@ -4171,13 +4153,13 @@ lifeRemainingToggle.addEventListener('change', () => {
   renderLifeCanvas();
 });
 lifeBirthDateInput.addEventListener('input', () => {
-  const maskedValue = maskBirthDateInput(lifeBirthDateInput.value);
-  if (lifeBirthDateInput.value !== maskedValue) lifeBirthDateInput.value = maskedValue;
   lifeBirthDateInput.classList.remove('is-error');
   lifeBirthDateStatus.classList.remove('is-error');
-  lifeBirthDateStatus.textContent = maskedValue.length === 10
+  lifeBirthDateStatus.textContent = lifeBirthDatePicker.value
     ? 'Нажмите Enter'
-    : 'Формат: ДД.ММ.ГГГГ';
+    : lifeBirthDateInput.value.trim()
+      ? 'Можно ввести 9.7.1990'
+      : 'Формат: ДД.ММ.ГГГГ';
 });
 lifeBirthDateInput.addEventListener('change', commitBirthDateInput);
 lifeBirthDateInput.addEventListener('keydown', (event) => {
@@ -4406,10 +4388,12 @@ photoImportDialog.addEventListener('cancel', (event) => {
 photoImportForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (!desktopBridge || photoImportInProgress || !pendingPhotoImportPaths.length) return;
+  photoImportDatePicker.validate();
   if (!photoImportForm.reportValidity()) return;
 
   photoImportInProgress = true;
   photoImportSuggestionSequence += 1;
+  photoImportDatePicker.disabled = true;
   photoImportSubmit.disabled = true;
   photoImportCancel.disabled = true;
   photoImportClose.disabled = true;
@@ -4417,7 +4401,7 @@ photoImportForm.addEventListener('submit', async (event) => {
   photoImportError.hidden = true;
   let reloadAfterImport = false;
   try {
-    const result = await desktopBridge.importPhotos(pendingPhotoImportPaths, photoImportDate.value);
+    const result = await desktopBridge.importPhotos(pendingPhotoImportPaths, photoImportDatePicker.value);
     if (result.warning) {
       pendingPhotoImportPaths = [];
       photoImportError.textContent = `Фотографии сохранены, но не добавлены в календарь: ${result.warning}`;
@@ -4432,6 +4416,7 @@ photoImportForm.addEventListener('submit', async (event) => {
     photoImportSubmit.textContent = 'Повторить';
   } finally {
     photoImportInProgress = false;
+    photoImportDatePicker.disabled = false;
     photoImportSubmit.disabled = pendingPhotoImportPaths.length === 0;
     photoImportCancel.disabled = false;
     photoImportClose.disabled = false;

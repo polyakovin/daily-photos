@@ -220,15 +220,24 @@
             </label>
             <div class="life-birth-date">
               <label for="lifeBirthDate">Дата рождения</label>
-              <input
-                id="lifeBirthDate"
-                type="text"
-                inputmode="numeric"
-                autocomplete="bday"
-                maxlength="10"
-                placeholder="ДД.ММ.ГГГГ"
-                aria-describedby="lifeBirthDateStatus"
-              />
+              <div class="date-picker">
+                <input
+                  id="lifeBirthDate"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="bday"
+                  placeholder="ДД.ММ.ГГГГ"
+                  min="1900-01-01"
+                  aria-describedby="lifeBirthDateStatus"
+                  data-date-picker
+                  data-picker-label="Дата рождения"
+                />
+                <button class="date-picker-toggle" type="button" aria-label="Открыть календарь даты рождения">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 3v3M17 3v3M4.5 9h15M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+                  </svg>
+                </button>
+              </div>
               <small class="life-birth-date-status" id="lifeBirthDateStatus" aria-live="polite"></small>
             </div>
             <div class="life-summary" id="lifeSummary" aria-label="Прожито"></div>
@@ -398,11 +407,29 @@
         <p class="photo-import-kicker">Новые воспоминания</p>
         <h1 id="photoImportTitle">Добавить фотографии</h1>
         <p class="photo-import-summary" id="photoImportSummary"></p>
-        <label class="photo-import-date-field" for="photoImportDate">
-          <span>Дата фотографии</span>
-          <input id="photoImportDate" type="date" required />
+        <div class="photo-import-date-field">
+          <label for="photoImportDate">Дата фотографии</label>
+          <div class="date-picker">
+            <input
+              id="photoImportDate"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              placeholder="ДД.ММ.ГГГГ"
+              min="1900-01-01"
+              aria-describedby="photoImportDateHint"
+              data-date-picker
+              data-picker-label="Дата фотографии"
+              required
+            />
+            <button class="date-picker-toggle" type="button" aria-label="Открыть календарь даты фотографии">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 3v3M17 3v3M4.5 9h15M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+              </svg>
+            </button>
+          </div>
           <small id="photoImportDateHint">Предлагаем дату съёмки из EXIF, если она указана</small>
-        </label>
+        </div>
         <p class="photo-import-error" id="photoImportError" role="alert" hidden></p>
         <div class="photo-import-actions">
           <button class="photo-import-cancel" id="photoImportCancel" type="button">Отмена</button>
@@ -583,7 +610,25 @@
             </div>
             <form class="viewer-date-form" id="viewerDateForm" hidden>
               <label class="sr-only" for="viewerDateInput">Новая дата фотографии</label>
-              <input id="viewerDateInput" type="date" min="1900-01-01" required />
+              <div class="date-picker">
+                <input
+                  id="viewerDateInput"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="ДД.ММ.ГГГГ"
+                  min="1900-01-01"
+                  aria-describedby="viewerDateStatus"
+                  data-date-picker
+                  data-picker-label="Новая дата фотографии"
+                  required
+                />
+                <button class="date-picker-toggle" type="button" aria-label="Открыть календарь новой даты фотографии">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 3v3M17 3v3M4.5 9h15M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+                  </svg>
+                </button>
+              </div>
               <button class="viewer-date-save" id="viewerDateSave" type="submit">Перенести</button>
               <button class="viewer-date-cancel" id="viewerDateCancel" type="button">Отмена</button>
               <span class="viewer-date-status" id="viewerDateStatus" aria-live="polite"></span>
@@ -633,7 +678,8 @@
     <script src="/life-range.js?v=1" defer></script>
     <script src="/map.js?v=2" defer></script>
     <script src="/photo-import-date.js?v=1" defer></script>
+    <script src="/date-picker.js?v=1" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=75" defer></script>
+    <script src="/app.js?v=76" defer></script>
   </body>
 </html>

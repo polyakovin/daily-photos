@@ -68,6 +68,7 @@ const UI_FILES = new Map([
   ['/life-range.js', 'life-range.js'],
   ['/map.js', 'map.js'],
   ['/photo-import-date.js', 'photo-import-date.js'],
+  ['/date-picker.js', 'date-picker.js'],
   ['/view-state.js', 'view-state.js'],
   ['/app.js', 'app.js']
 ]);
