@@ -102,6 +102,23 @@ const viewerDiary = document.querySelector('#viewerDiary');
 const viewerDiaryContent = document.querySelector('#viewerDiaryContent');
 const viewerDiaryToggle = document.querySelector('#viewerDiaryToggle');
 const presentationButton = document.querySelector('#presentationButton');
+const aboutButton = document.querySelector('#aboutButton');
+const aboutDialog = document.querySelector('#aboutDialog');
+const aboutCard = document.querySelector('#aboutCard');
+const aboutClose = document.querySelector('#aboutClose');
+const aboutVersion = document.querySelector('#aboutVersion');
+const aboutBuildDate = document.querySelector('#aboutBuildDate');
+const aboutEnvironment = document.querySelector('#aboutEnvironment');
+const aboutStatus = document.querySelector('#aboutStatus');
+const aboutPhotoCount = document.querySelector('#aboutPhotoCount');
+const aboutDayCount = document.querySelector('#aboutDayCount');
+const aboutDiaryCount = document.querySelector('#aboutDiaryCount');
+const aboutLocatedCount = document.querySelector('#aboutLocatedCount');
+const aboutDataSource = document.querySelector('#aboutDataSource');
+const aboutDateRange = document.querySelector('#aboutDateRange');
+const aboutPlaces = document.querySelector('#aboutPlaces');
+const aboutIndex = document.querySelector('#aboutIndex');
+const aboutRuntime = document.querySelector('#aboutRuntime');
 const viewerBlurToggle = document.querySelector('#viewerBlurToggle');
 const viewerBlurControl = viewerBlurToggle.closest('.viewer-blur-toggle');
 const viewerBlurStatus = document.querySelector('#viewerBlurStatus');
@@ -259,6 +276,7 @@ let pendingPhotoImportPaths = [];
 let photoImportInProgress = false;
 let photoDragDepth = 0;
 let photoImportSuggestionSequence = 0;
+let aboutInfoRequest = null;
 
 function readStoredNavigationState() {
   try {
@@ -266,6 +284,108 @@ function readStoredNavigationState() {
   } catch {
     return normalizeViewState(null);
   }
+}
+
+function aboutNumber(value) {
+  return Math.max(0, Number(value) || 0).toLocaleString('ru-RU');
+}
+
+function aboutPlatformLabel(platform) {
+  return {
+    darwin: 'macOS',
+    win32: 'Windows',
+    linux: 'Linux'
+  }[platform] || '';
+}
+
+function aboutEnvironmentLabel(application) {
+  if (application.environment !== 'desktop') return 'Веб-версия';
+  const platform = aboutPlatformLabel(application.platform);
+  return platform ? `Приложение · ${platform}` : 'Приложение';
+}
+
+function aboutBuildLabel(value) {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return 'Не указана';
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  }).format(date);
+}
+
+function aboutSourceLabel(data) {
+  const roots = Math.max(0, Number(data.rootCount) || 0);
+  const rootsLabel = roots
+    ? `${roots.toLocaleString('ru-RU')} ${pluralize(roots, ['источник', 'источника', 'источников'])}`
+    : 'источник не настроен';
+  if (desktopArchiveState?.name) return `${desktopArchiveState.name} · ${rootsLabel}`;
+  return data.sourceMode === 'computer'
+    ? `Автопоиск · ${rootsLabel}`
+    : `Локальная папка · ${rootsLabel}`;
+}
+
+function aboutRuntimeLabel(application) {
+  const runtime = application.runtime || {};
+  const components = [
+    runtime.electron ? `Electron ${runtime.electron}` : '',
+    runtime.chromium ? `Chromium ${runtime.chromium}` : '',
+    runtime.node ? `Node.js ${runtime.node}` : ''
+  ].filter(Boolean);
+  return components.join(' · ') || 'Браузер';
+}
+
+function renderAboutInfo(info) {
+  const application = info?.application || {};
+  const data = info?.data || {};
+  aboutVersion.textContent = application.version || '—';
+  aboutBuildDate.textContent = aboutBuildLabel(application.buildDate);
+  aboutEnvironment.textContent = aboutEnvironmentLabel(application);
+  aboutPhotoCount.textContent = aboutNumber(data.photos);
+  aboutDayCount.textContent = aboutNumber(data.photoDays);
+  aboutDiaryCount.textContent = aboutNumber(data.diaryEntries);
+  aboutLocatedCount.textContent = aboutNumber(data.locatedPhotos);
+  aboutDataSource.textContent = aboutSourceLabel(data);
+  aboutDateRange.textContent = data.dateFrom && data.dateTo
+    ? `${formatDate(data.dateFrom)} — ${formatDate(data.dateTo)}`
+    : 'Датированные фотографии не найдены';
+  aboutPlaces.textContent = `${aboutNumber(data.savedPlaces)} ${pluralize(
+    Math.max(0, Number(data.savedPlaces) || 0),
+    ['сохранённое место', 'сохранённых места', 'сохранённых мест']
+  )}`;
+  aboutIndex.textContent = [
+    data.metadataIndex ? 'метаданные EXIF' : 'даты из путей',
+    data.cachedIndex ? 'кэш загружен' : 'текущее сканирование',
+    data.convertsImages ? 'замена на WebP включена' : 'оригиналы сохраняются'
+  ].join(' · ');
+  aboutRuntime.textContent = aboutRuntimeLabel(application);
+}
+
+async function loadAboutInfo() {
+  if (aboutInfoRequest) return aboutInfoRequest;
+  aboutCard.setAttribute('aria-busy', 'true');
+  aboutStatus.textContent = 'Обновляем…';
+  aboutStatus.classList.remove('is-error');
+  aboutInfoRequest = fetch('/api/app-info')
+    .then(async (response) => {
+      if (!response.ok) throw new Error('Сведения недоступны');
+      renderAboutInfo(await response.json());
+      aboutStatus.textContent = 'Актуально сейчас';
+    })
+    .catch(() => {
+      aboutStatus.textContent = 'Не удалось обновить';
+      aboutStatus.classList.add('is-error');
+    })
+    .finally(() => {
+      aboutCard.removeAttribute('aria-busy');
+      aboutInfoRequest = null;
+    });
+  return aboutInfoRequest;
+}
+
+function openAboutDialog() {
+  if (!aboutDialog.open) aboutDialog.showModal();
+  void loadAboutInfo();
 }
 
 function hideBackgroundOperation() {
@@ -4269,6 +4389,11 @@ window.addEventListener('dragleave', handlePhotoDragLeave);
 window.addEventListener('drop', handlePhotoDrop);
 window.addEventListener('dragend', resetPhotoDragState);
 window.addEventListener('blur', resetPhotoDragState);
+aboutButton.addEventListener('click', openAboutDialog);
+aboutClose.addEventListener('click', () => aboutDialog.close());
+aboutDialog.addEventListener('click', (event) => {
+  if (event.target === aboutDialog) aboutDialog.close();
+});
 photoImportClose.addEventListener('click', closePhotoImportDialog);
 photoImportCancel.addEventListener('click', closePhotoImportDialog);
 photoImportDialog.addEventListener('cancel', (event) => {

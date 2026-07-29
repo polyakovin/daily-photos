@@ -68,6 +68,22 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateEdit"/);
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput" type="date" min="1900-01-01"/);
+  assert.match(appHtml, /id="aboutButton"/);
+  assert.match(appHtml, /id="aboutDialog"/);
+  assert.match(appHtml, /id="aboutVersion"/);
+  assert.match(appHtml, /id="aboutAuthorName">Игорь Поляков/);
+  assert.doesNotMatch(appHtml, /class="app-author"/);
+
+  const appInfoResponse = await fetch(`${server.url}/api/app-info`);
+  assert.equal(appInfoResponse.status, 200);
+  assert.match(appInfoResponse.headers.get('content-type'), /^application\/json/);
+  const appInfo = await appInfoResponse.json();
+  assert.equal(appInfo.application.name, 'Фото дня');
+  assert.match(appInfo.application.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(appInfo.data.photos, 0);
+  assert.equal(appInfo.data.rootCount, 1);
+  assert.equal(appInfo.data.metadataIndex, true);
+  assert.doesNotMatch(JSON.stringify(appInfo), new RegExp(temporaryRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
   const stylesResponse = await fetch(`${server.url}/styles.css`);
   assert.equal(stylesResponse.status, 200);
@@ -94,6 +110,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.map-assignment-preview[\s\S]*?width:\s*100%[\s\S]*?aspect-ratio:\s*248\s*\/\s*184/);
   assert.doesNotMatch(styles, /\.map-assignment-preview\s*>\s*span/);
   assert.match(styles, /\.map-assignment-actions\s*\{\s*grid-column:\s*1/);
+  assert.match(styles, /\.about-dialog/);
+  assert.match(styles, /\.about-stats/);
 
   const appScriptResponse = await fetch(`${server.url}/app.js`);
   assert.equal(appScriptResponse.status, 200);
@@ -113,6 +131,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /onPhotoClick:\s*openMapFanPhoto/);
   assert.match(appScript, /changeViewerPhotoDate/);
   assert.match(appScript, /\/api\/photos\/\$\{photo\.id\}\/date/);
+  assert.match(appScript, /fetch\('\/api\/app-info'\)/);
+  assert.match(appScript, /function renderAboutInfo/);
 
   assert.match(mapScript, /function photoStackPoints\(points\)/);
   assert.match(mapScript, /function photoFanLayout\(total,\s*index\)/);
