@@ -51,7 +51,6 @@ const mapAssignmentPreview = document.querySelector('#mapAssignmentPreview');
 const mapAssignmentImage = document.querySelector('#mapAssignmentImage');
 const mapAssignmentProgress = document.querySelector('#mapAssignmentProgress');
 const mapAssignmentDate = document.querySelector('#mapAssignmentDate');
-const mapAssignmentOpenPhoto = document.querySelector('#mapAssignmentOpenPhoto');
 const mapAssignmentChoosePlace = document.querySelector('#mapAssignmentChoosePlace');
 const mapPlaceEditor = document.querySelector('#mapPlaceEditor');
 const mapPlaceName = document.querySelector('#mapPlaceName');
@@ -60,6 +59,7 @@ const mapPlaceCoordinates = document.querySelector('#mapPlaceCoordinates');
 const mapPlaceError = document.querySelector('#mapPlaceError');
 const mapPlaceSave = document.querySelector('#mapPlaceSave');
 const mapPhotoCard = document.querySelector('#mapPhotoCard');
+const mapPhotoPreview = document.querySelector('#mapPhotoPreview');
 const mapPhotoImage = document.querySelector('#mapPhotoImage');
 const mapPhotoPosition = document.querySelector('#mapPhotoPosition');
 const mapPhotoDate = document.querySelector('#mapPhotoDate');
@@ -1854,14 +1854,14 @@ function renderMapPhotoCard() {
     return;
   }
   mapPhotoCard.classList.remove('is-place-only');
-  mapPhotoImage.hidden = false;
-  document.querySelector('#mapPhotoOpen').hidden = false;
+  mapPhotoPreview.hidden = false;
   mapPlaceAttachPhoto.hidden = !activeMapRelatedPlaces.length;
   mapPlaceAttachPhoto.textContent = 'Привязать ещё';
   const fallback = photo.src;
   mapPhotoImage.src = photo.thumbnailSrc || fallback;
   mapPhotoImage.dataset.fallbackSrc = fallback;
   mapPhotoImage.alt = `Фото за ${formatDate(photo.date)}`;
+  mapPhotoPreview.setAttribute('aria-label', `Открыть фото за ${formatDate(photo.date)}`);
   mapPhotoPosition.textContent = activeMapPhotos.length > 1
     ? `${(activeMapPhotoIndex + 1).toLocaleString('ru-RU')} из ${activeMapPhotos.length.toLocaleString('ru-RU')}`
     : photoLocationLabel(photo);
@@ -1901,7 +1901,7 @@ function renderMapPlaceCard() {
   activeMapPhotos = [];
   activeMapRelatedPlaces = [];
   mapPhotoCard.classList.add('is-place-only');
-  mapPhotoImage.hidden = true;
+  mapPhotoPreview.hidden = true;
   mapPhotoImage.removeAttribute('src');
   mapPhotoImage.removeAttribute('data-fallback-src');
   mapPhotoPosition.textContent = activeMapPlaces.length > 1
@@ -1917,7 +1917,6 @@ function renderMapPlaceCard() {
   document.querySelector('#mapPhotoNext').disabled = activeMapPlaces.length < 2;
   document.querySelector('#mapPhotoPrevious').setAttribute('aria-label', 'Предыдущее место');
   document.querySelector('#mapPhotoNext').setAttribute('aria-label', 'Следующее место');
-  document.querySelector('#mapPhotoOpen').hidden = true;
   mapPhotoChoosePlace.hidden = true;
   mapPlaceAttachPhoto.hidden = false;
   mapPointDelete.hidden = false;
@@ -2279,10 +2278,10 @@ function renderMapAssignment() {
     }, 6000);
   }
   mapAssignmentImage.alt = `Фото за ${formatDate(photo.date)}`;
+  mapAssignmentPreview.setAttribute('aria-label', `Открыть фото за ${formatDate(photo.date)}`);
   mapAssignmentProgress.textContent = `${(mapAssignmentIndex + 1).toLocaleString('ru-RU')} из ${mapAssignmentPhotos.length.toLocaleString('ru-RU')}`;
   mapAssignmentDate.textContent = formatDate(photo.date);
   mapAssignmentPreview.disabled = mapAssignmentSaving;
-  mapAssignmentOpenPhoto.disabled = mapAssignmentSaving;
   mapAssignmentChoosePlace.disabled = mapAssignmentSaving || mapPlacePickerSaving;
   mapController?.setSelection(null);
   mapController?.setSelectionMode(true);
@@ -4059,14 +4058,13 @@ document.querySelector('#mapZoomOut').addEventListener('click', () => mapControl
 document.querySelector('#mapAssignmentSkip').addEventListener('click', skipMapAssignmentPhoto);
 document.querySelector('#mapAssignmentDone').addEventListener('click', finishMapAssignment);
 mapAssignmentPreview.addEventListener('click', openCurrentMapAssignmentPhoto);
-mapAssignmentOpenPhoto.addEventListener('click', openCurrentMapAssignmentPhoto);
 mapAssignmentChoosePlace.addEventListener('click', () => {
   openMapPlacePicker(mapAssignmentPhotos[mapAssignmentIndex], 'assignment');
 });
 document.querySelector('#mapPhotoClose').addEventListener('click', () => { mapPhotoCard.hidden = true; });
 document.querySelector('#mapPhotoPrevious').addEventListener('click', () => moveMapPhoto(-1));
 document.querySelector('#mapPhotoNext').addEventListener('click', () => moveMapPhoto(1));
-document.querySelector('#mapPhotoOpen').addEventListener('click', openCurrentMapPhoto);
+mapPhotoPreview.addEventListener('click', openCurrentMapPhoto);
 mapPhotoChoosePlace.addEventListener('click', () => openMapPlacePicker());
 mapPlaceAttachPhoto.addEventListener('click', openMapPhotoPicker);
 mapPointDelete.addEventListener('click', () => void deleteActiveMapPoint());

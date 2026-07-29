@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Фото дня — календарь</title>
     <script src="/theme.js?v=1"></script>
-    <link rel="stylesheet" href="/styles.css?v=91" />
+    <link rel="stylesheet" href="/styles.css?v=92" />
   </head>
   <body>
     <main class="shell">
@@ -154,7 +154,6 @@
               <span>Нажмите на место съёмки на карте</span>
             </div>
             <div class="map-assignment-actions">
-              <button id="mapAssignmentOpenPhoto" type="button">Открыть фото</button>
               <button id="mapAssignmentChoosePlace" type="button">Выбрать место</button>
               <button id="mapAssignmentSkip" type="button">Пропустить</button>
               <button id="mapAssignmentDone" type="button">Готово</button>
@@ -185,7 +184,14 @@
           </form>
           <article class="map-photo-card" id="mapPhotoCard" hidden>
             <button class="map-photo-close" id="mapPhotoClose" type="button" aria-label="Закрыть карточку">×</button>
-            <img id="mapPhotoImage" alt="" />
+            <button
+              class="map-photo-preview"
+              id="mapPhotoPreview"
+              type="button"
+              aria-label="Открыть фотографию в режиме просмотра"
+            >
+              <img id="mapPhotoImage" alt="" />
+            </button>
             <div class="map-photo-copy">
               <small id="mapPhotoPosition"></small>
               <strong id="mapPhotoDate"></strong>
@@ -193,7 +199,6 @@
             </div>
             <div class="map-photo-actions">
               <button id="mapPhotoPrevious" type="button" aria-label="Предыдущая фотография">←</button>
-              <button id="mapPhotoOpen" type="button">Открыть</button>
               <button id="mapPhotoChoosePlace" type="button" hidden>Выбрать место</button>
               <button id="mapPlaceAttachPhoto" type="button" hidden>Привязать фотографию</button>
               <button id="mapPointDelete" type="button" hidden>Удалить место</button>
@@ -678,6 +683,6 @@
     <script src="/photo-import-date.js?v=1" defer></script>
     <script src="/date-picker.js?v=5" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=77" defer></script>
+    <script src="/app.js?v=78" defer></script>
   </body>
 </html>
