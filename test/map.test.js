@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   clusterProjectedPoints,
+  linkedReferencePlaces,
   normalizeCoordinates,
   normalizeLongitude,
   parseCoordinateQuery,
@@ -66,7 +67,7 @@ test('marker clusters use a world grid that does not depend on viewport movement
   assert.equal(first.find((group) => group.points.some((point) => point.id === 'a')).points.length, 2);
 });
 
-test('map hides unlinked reference markers already represented by a photo', () => {
+test('map replaces a selected reference marker with the linked photo marker', () => {
   const photos = [{
     id: 'linked-photo',
     latitude: 55.7558,
@@ -95,17 +96,22 @@ test('map hides unlinked reference markers already represented by a photo', () =
   }];
 
   assert.deepEqual(
+    visibleReferencePoints(places, []).map(({ id }) => id),
+    ['linked-place', 'duplicate-unlinked-place', 'independent-place']
+  );
+  assert.deepEqual(
     visibleReferencePoints(places, photos).map(({ id, mapPointType }) => ({
       id,
       mapPointType
     })),
     [{
-      id: 'linked-place',
-      mapPointType: 'reference'
-    }, {
       id: 'independent-place',
       mapPointType: 'reference'
     }]
+  );
+  assert.deepEqual(
+    linkedReferencePlaces(places, photos).map(({ id }) => id),
+    ['linked-place']
   );
 });
 

@@ -81,18 +81,22 @@
       : '';
   }
 
+  function linkedReferencePlaces(places, photos) {
+    const linkedReferenceIds = new Set(
+      (Array.isArray(photos) ? photos : [])
+        .map((photo) => photo.locationReferenceId)
+        .filter(Boolean)
+    );
+    return (Array.isArray(places) ? places : [])
+      .filter((place) => linkedReferenceIds.has(place.id));
+  }
+
   function visibleReferencePoints(places, photos) {
     const locatedPhotos = (Array.isArray(photos) ? photos : [])
       .filter((photo) => mapCoordinateKey(photo));
-    const linkedReferenceIds = new Set(
-      locatedPhotos.map((photo) => photo.locationReferenceId).filter(Boolean)
-    );
     const photoCoordinateKeys = new Set(locatedPhotos.map(mapCoordinateKey));
     return (Array.isArray(places) ? places : [])
-      .filter((place) => (
-        linkedReferenceIds.has(place.id)
-        || !photoCoordinateKeys.has(mapCoordinateKey(place))
-      ))
+      .filter((place) => !photoCoordinateKeys.has(mapCoordinateKey(place)))
       .map((place) => ({ ...place, mapPointType: 'reference' }));
   }
 
@@ -724,6 +728,7 @@
     MAX_ZOOM,
     MIN_ZOOM,
     clusterProjectedPoints,
+    linkedReferencePlaces,
     mapCoordinateKey,
     normalizeCoordinates,
     normalizeLongitude,

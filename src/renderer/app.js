@@ -14,6 +14,7 @@ const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
 const { suggestCalendarImportDate } = window.PhotoDayImportDate;
 const {
   InteractiveMap,
+  linkedReferencePlaces,
   mapCoordinateKey,
   normalizeCoordinates: normalizeMapCoordinates,
   parseCoordinateQuery,
@@ -1823,7 +1824,8 @@ function showMapPointGroup(group) {
   const groupPhotos = group.filter((point) => point.mapPointType === 'photo');
   const groupPlaces = group.filter((point) => point.mapPointType === 'reference');
   if (groupPhotos.length) {
-    showMapPhotoGroup(groupPhotos, groupPlaces);
+    const linkedPlaces = linkedReferencePlaces(locationReferencePlaces, groupPhotos);
+    showMapPhotoGroup(groupPhotos, linkedPlaces.length ? linkedPlaces : groupPlaces);
     return;
   }
   activeMapPhotos = [];
