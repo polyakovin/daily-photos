@@ -52,6 +52,8 @@ const mapAssignmentImage = document.querySelector('#mapAssignmentImage');
 const mapAssignmentProgress = document.querySelector('#mapAssignmentProgress');
 const mapAssignmentDate = document.querySelector('#mapAssignmentDate');
 const mapAssignmentChoosePlace = document.querySelector('#mapAssignmentChoosePlace');
+const mapAssignmentSkip = document.querySelector('#mapAssignmentSkip');
+const mapAssignmentDone = document.querySelector('#mapAssignmentDone');
 const mapPlaceEditor = document.querySelector('#mapPlaceEditor');
 const mapPlaceName = document.querySelector('#mapPlaceName');
 const mapPlaceCountry = document.querySelector('#mapPlaceCountry');
@@ -227,6 +229,7 @@ let mapAssignmentPhotos = [];
 let mapAssignmentIndex = 0;
 let mapAssignmentSaving = false;
 let mapAssignmentImageFallbackTimer = 0;
+let mapAssignmentMode = 'batch';
 let mapPlaceDraft = null;
 let mapPlaceSaving = false;
 let activeMapPhotos = [];
@@ -2279,10 +2282,14 @@ function renderMapAssignment() {
   }
   mapAssignmentImage.alt = `Фото за ${formatDate(photo.date)}`;
   mapAssignmentPreview.setAttribute('aria-label', `Открыть фото за ${formatDate(photo.date)}`);
-  mapAssignmentProgress.textContent = `${(mapAssignmentIndex + 1).toLocaleString('ru-RU')} из ${mapAssignmentPhotos.length.toLocaleString('ru-RU')}`;
+  mapAssignmentProgress.textContent = mapAssignmentMode === 'single'
+    ? 'Выберите точку'
+    : `${(mapAssignmentIndex + 1).toLocaleString('ru-RU')} из ${mapAssignmentPhotos.length.toLocaleString('ru-RU')}`;
   mapAssignmentDate.textContent = formatDate(photo.date);
   mapAssignmentPreview.disabled = mapAssignmentSaving;
   mapAssignmentChoosePlace.disabled = mapAssignmentSaving || mapPlacePickerSaving;
+  mapAssignmentSkip.hidden = mapAssignmentMode === 'single';
+  mapAssignmentDone.textContent = mapAssignmentMode === 'single' ? 'Отмена' : 'Готово';
   mapController?.setSelection(null);
   mapController?.setSelectionMode(true);
   mapStageWrap.classList.add('is-assigning');
@@ -2292,6 +2299,7 @@ function startMapAssignment() {
   ensureMap();
   mapAssignmentPhotos = photos.filter((photo) => !photoHasLocation(photo) && !photo.locationHidden);
   mapAssignmentIndex = 0;
+  mapAssignmentMode = 'batch';
   mapPhotoCard.hidden = true;
   if (!mapAssignmentPhotos.length) return;
   mapAssignButton.disabled = true;
@@ -2299,18 +2307,46 @@ function startMapAssignment() {
   renderMapAssignment();
 }
 
+function startMapPhotoPlacement() {
+  const photo = activeMapPhotos[activeMapPhotoIndex];
+  if (!photo || mapAssignmentPhotos.length || mapAssignmentSaving) return;
+  ensureMap();
+  mapAssignmentPhotos = [photo];
+  mapAssignmentIndex = 0;
+  mapAssignmentMode = 'single';
+  mapPhotoCard.hidden = true;
+  mapAssignButton.disabled = true;
+  mapAddPlaceButton.disabled = true;
+  renderMapAssignment();
+}
+
 function finishMapAssignment() {
+  const placementPhoto = mapAssignmentMode === 'single'
+    ? mapAssignmentPhotos[mapAssignmentIndex] || mapAssignmentPhotos[0]
+    : null;
   clearTimeout(mapAssignmentImageFallbackTimer);
   mapAssignmentImageFallbackTimer = 0;
   mapAssignmentPhotos = [];
   mapAssignmentIndex = 0;
   mapAssignmentSaving = false;
+  mapAssignmentMode = 'batch';
   mapAssignment.hidden = true;
   mapController?.setSelection(null);
   mapController?.setSelectionMode(false);
   mapStageWrap.classList.remove('is-assigning');
   mapLocationSearch?.clear();
   renderMapLocations();
+  if (placementPhoto) {
+    const currentPhoto = photos.find((photo) => photo.id === placementPhoto.id) || placementPhoto;
+    activeMapPhotos = [currentPhoto];
+    activeMapPhotoIndex = 0;
+    activeMapPlaces = [];
+    activeMapPlaceIndex = 0;
+    activeMapRelatedPlaces = sortedReferencePlaces(
+      locationReferencePlaces.filter((place) => place.id === currentPhoto.locationReferenceId)
+    );
+    renderMapPhotoCard();
+  }
 }
 
 function skipMapAssignmentPhoto() {
@@ -2334,13 +2370,23 @@ async function assignCurrentPhotoToLocation(location) {
   mapController?.setSelection(location);
   mapAssignmentProgress.textContent = 'Сохраняем…';
   let errorMessage = '';
+  let completedSinglePlacement = false;
   try {
-    await persistPhotoLocation(photo, location);
-    mapAssignmentIndex += 1;
+    const updatedPhoto = await persistPhotoLocation(photo, location);
+    if (mapAssignmentMode === 'single') {
+      mapAssignmentPhotos[mapAssignmentIndex] = updatedPhoto;
+      completedSinglePlacement = true;
+    } else {
+      mapAssignmentIndex += 1;
+    }
   } catch (error) {
     errorMessage = error.message;
   } finally {
     mapAssignmentSaving = false;
+    if (completedSinglePlacement) {
+      finishMapAssignment();
+      return;
+    }
     renderMapAssignment();
     if (errorMessage && mapAssignmentPhotos[mapAssignmentIndex]) {
       mapAssignmentProgress.textContent = errorMessage;
@@ -4055,8 +4101,8 @@ document.querySelector('#mapPlaceCancel').addEventListener('click', finishMapPla
 document.querySelector('#mapPlaceCancelSecondary').addEventListener('click', finishMapPlaceCreation);
 document.querySelector('#mapZoomIn').addEventListener('click', () => mapController?.zoomBy(1));
 document.querySelector('#mapZoomOut').addEventListener('click', () => mapController?.zoomBy(-1));
-document.querySelector('#mapAssignmentSkip').addEventListener('click', skipMapAssignmentPhoto);
-document.querySelector('#mapAssignmentDone').addEventListener('click', finishMapAssignment);
+mapAssignmentSkip.addEventListener('click', skipMapAssignmentPhoto);
+mapAssignmentDone.addEventListener('click', finishMapAssignment);
 mapAssignmentPreview.addEventListener('click', openCurrentMapAssignmentPhoto);
 mapAssignmentChoosePlace.addEventListener('click', () => {
   openMapPlacePicker(mapAssignmentPhotos[mapAssignmentIndex], 'assignment');
@@ -4065,7 +4111,7 @@ document.querySelector('#mapPhotoClose').addEventListener('click', () => { mapPh
 document.querySelector('#mapPhotoPrevious').addEventListener('click', () => moveMapPhoto(-1));
 document.querySelector('#mapPhotoNext').addEventListener('click', () => moveMapPhoto(1));
 mapPhotoPreview.addEventListener('click', openCurrentMapPhoto);
-mapPhotoChoosePlace.addEventListener('click', () => openMapPlacePicker());
+mapPhotoChoosePlace.addEventListener('click', startMapPhotoPlacement);
 mapPlaceAttachPhoto.addEventListener('click', openMapPhotoPicker);
 mapPointDelete.addEventListener('click', () => void deleteActiveMapPoint());
 document.querySelector('#mapPhotoPickerClose').addEventListener('click', closeMapPhotoPicker);

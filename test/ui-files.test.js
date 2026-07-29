@@ -72,7 +72,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="mapAssignmentPreview"/);
   assert.match(appHtml, /id="mapAssignmentPreview"[\s\S]*?<img id="mapAssignmentImage"[^>]*\/>\s*<\/button>/);
   assert.doesNotMatch(appHtml, /id="mapAssignmentOpenPhoto"/);
-  assert.match(appHtml, /id="mapAssignmentChoosePlace"/);
+  assert.match(appHtml, /id="mapAssignmentChoosePlace"[^>]*>Из сохранённых<\/button>/);
   assert.match(appHtml, /id="mapPhotoPreview"[\s\S]*?<img id="mapPhotoImage"[^>]*\/>\s*<\/button>/);
   assert.doesNotMatch(appHtml, /id="mapPhotoOpen"/);
   assert.match(appHtml, /id="mapPointDelete"/);
@@ -85,7 +85,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
   assert.match(appHtml, /href="\/styles\.css\?v=92"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=5"/);
-  assert.match(appHtml, /src="\/app\.js\?v=78"/);
+  assert.match(appHtml, /src="\/app\.js\?v=79"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -148,6 +148,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /deleteActiveMapPoint/);
   assert.match(appScript, /mapPlacePickerCandidates/);
   assert.match(appScript, /linkSelectedPhotoToPlace/);
+  assert.match(appScript, /function startMapPhotoPlacement\(\)/);
+  assert.match(appScript, /mapAssignmentPhotos = \[photo\]/);
+  assert.match(appScript, /mapPhotoChoosePlace\.addEventListener\('click', startMapPhotoPlacement\)/);
+  assert.doesNotMatch(appScript, /mapPhotoChoosePlace\.addEventListener\('click', \(\) => openMapPlacePicker\(\)\)/);
   assert.match(appScript, /openCurrentMapAssignmentPhoto/);
   assert.match(appScript, /mapAssignmentPreview\.addEventListener\('click', openCurrentMapAssignmentPhoto\)/);
   assert.match(appScript, /mapPhotoPreview\.addEventListener\('click', openCurrentMapPhoto\)/);
@@ -155,7 +159,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.doesNotMatch(appScript, /mapPhotoOpen/);
   assert.match(appScript, /mapAssignmentImageFallbackTimer/);
   assert.match(appScript, /mapAssignmentImage\.dataset\.fallbackSrc/);
-  assert.match(appScript, /mapAssignmentSaving = false;\s*renderMapAssignment\(\)/);
+  assert.match(appScript, /mapAssignmentSaving = false;\s*if \(completedSinglePlacement\)[\s\S]*?renderMapAssignment\(\)/);
   assert.match(appScript, /openMapFanPhoto/);
   assert.match(appScript, /onPhotoClick:\s*openMapFanPhoto/);
   assert.match(appScript, /changeViewerPhotoDate/);
