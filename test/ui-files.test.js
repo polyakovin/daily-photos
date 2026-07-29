@@ -83,7 +83,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=93"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=94"/);
   assert.match(appHtml, /src="\/map\.js\?v=3"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=5"/);
   assert.match(appHtml, /src="\/app\.js\?v=80"/);
@@ -111,6 +111,10 @@ test('десктопный сервер отдаёт вспомогательн�
   const styles = await stylesResponse.text();
   assert.match(styles, /\.geo-map-hover-preview/);
   assert.match(styles, /\.geo-map-photo-fan/);
+  assert.match(
+    styles,
+    /:root\[data-theme="dark"\] \.theme-button,\s*:root\[data-theme="dark"\] \.info-button,\s*:root\[data-theme="dark"\] \.presentation-button[\s\S]*?\{\s*background:/
+  );
   assert.match(
     styles,
     /:root\[data-theme="dark"\] \.calendar-day\.has-photo \.day-number\s*\{\s*color:\s*white;/

@@ -2334,9 +2334,11 @@ body .viewer-media img.is-loaded.is-press-zoomable {
 :root[data-theme="dark"] .calendar-focus button.is-active,
 :root[data-theme="dark"] .presentation-button.is-active { background: #356e58; box-shadow: 0 6px 18px rgba(0, 0, 0, .28); }
 :root[data-theme="dark"] .theme-button,
+:root[data-theme="dark"] .info-button,
 :root[data-theme="dark"] .presentation-button,
 :root[data-theme="dark"] .archive-settings-button { background: rgba(27, 39, 33, .86); }
 :root[data-theme="dark"] .theme-button:hover,
+:root[data-theme="dark"] .info-button:hover,
 :root[data-theme="dark"] .presentation-button:hover,
 :root[data-theme="dark"] .archive-settings-button:hover { border-color: rgba(190, 218, 201, .32); }
 :root[data-theme="dark"] .presentation-button i { background: rgba(218, 235, 225, .3); box-shadow: 0 0 0 3px rgba(218, 235, 225, .07); }
