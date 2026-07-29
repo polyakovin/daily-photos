@@ -1979,6 +1979,7 @@ body .viewer-media img.is-loaded.is-press-zoomable {
 :root[data-theme="dark"] .year-month-days i.has-photo { color: #183a2e; background: rgba(238, 244, 240, .94); box-shadow: 0 0 0 2px rgba(120, 179, 142, .5), 0 2px 7px rgba(0, 0, 0, .32); }
 :root[data-theme="dark"] .calendar-day .day-number,
 :root[data-theme="dark"] .calendar-grid.is-week .calendar-day.is-today .day-number { color: #a9b7ae; }
+:root[data-theme="dark"] .calendar-day.has-photo .day-number { color: white; }
 :root[data-theme="dark"] .calendar-day.is-diary-only { background: linear-gradient(145deg, #1b2721, #111815); }
 :root[data-theme="dark"] .calendar-day.is-diary-only:hover { background: linear-gradient(145deg, #25372e, #17211d); }
 :root[data-theme="dark"] .diary-badge { background: rgba(19, 28, 24, .92); box-shadow: 0 2px 8px rgba(0, 0, 0, .4); }

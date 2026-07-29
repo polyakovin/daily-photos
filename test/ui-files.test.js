@@ -74,6 +74,10 @@ test('десктопный сервер отдаёт вспомогательн�
   const styles = await stylesResponse.text();
   assert.match(styles, /\.geo-map-hover-preview/);
   assert.match(styles, /\.geo-map-photo-fan/);
+  assert.match(
+    styles,
+    /:root\[data-theme="dark"\] \.calendar-day\.has-photo \.day-number\s*\{\s*color:\s*white;/
+  );
   assert.match(styles, /\.geo-map-marker\.has-photo-stack:hover \.geo-map-fan-photo/);
   assert.match(styles, /\.geo-map-fan-photo:hover/);
   assert.match(styles, /opacity:\s*0[\s\S]*?translate3d\(var\(--fan-x\),\s*var\(--fan-y\),\s*0\)/);
