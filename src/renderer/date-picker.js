@@ -518,6 +518,10 @@
       this.close({ restoreFocus: true });
       this.input.dispatchEvent(new Event('input', { bubbles: true }));
       this.input.dispatchEvent(new Event('change', { bubbles: true }));
+      this.input.dispatchEvent(new CustomEvent('date-picker-select', {
+        bubbles: true,
+        detail: { value: this._value }
+      }));
     }
 
     focus() {

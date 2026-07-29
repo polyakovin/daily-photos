@@ -4345,6 +4345,9 @@ document.querySelector('#previousPhoto').addEventListener('click', () => movePho
 document.querySelector('#nextPhoto').addEventListener('click', () => movePhoto(1));
 viewerDateEdit.addEventListener('click', openViewerDateEditor);
 viewerDateCancel.addEventListener('click', closeViewerDateEditor);
+viewerDateInput.addEventListener('date-picker-select', () => {
+  void changeViewerPhotoDate();
+});
 viewerDateForm.addEventListener('submit', (event) => {
   event.preventDefault();
   void changeViewerPhotoDate();

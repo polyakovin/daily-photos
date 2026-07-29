@@ -53,6 +53,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(datePickerScript, /moveCalendarViewByArrow\(value, event\.key\)/);
   assert.match(datePickerScript, /setPhotoDates\(values\)/);
   assert.match(datePickerScript, /classList\.toggle\('has-photo', hasPhoto\)/);
+  assert.match(datePickerScript, /new CustomEvent\('date-picker-select'/);
 
   const mapResponse = await fetch(`${server.url}/map.js`);
   assert.equal(mapResponse.status, 200);
@@ -85,8 +86,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
   assert.match(appHtml, /href="\/styles\.css\?v=95"/);
   assert.match(appHtml, /src="\/map\.js\?v=3"/);
-  assert.match(appHtml, /src="\/date-picker\.js\?v=5"/);
-  assert.match(appHtml, /src="\/app\.js\?v=81"/);
+  assert.match(appHtml, /src="\/date-picker\.js\?v=6"/);
+  assert.match(appHtml, /src="\/app\.js\?v=82"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -181,6 +182,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.ok(viewerDateEditorBody);
   assert.match(viewerDateEditorBody, /viewerDatePicker\.open\(\)/);
   assert.doesNotMatch(viewerDateEditorBody, /viewerDatePicker\.focus\(\)/);
+  assert.match(
+    appScript,
+    /viewerDateInput\.addEventListener\('date-picker-select',[\s\S]*?changeViewerPhotoDate\(\)/
+  );
   assert.match(appScript, /\/api\/photos\/\$\{photo\.id\}\/date/);
   assert.match(appScript, /fetch\('\/api\/app-info'\)/);
   assert.match(appScript, /function renderAboutInfo/);
