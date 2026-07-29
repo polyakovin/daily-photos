@@ -83,7 +83,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=94"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=95"/);
   assert.match(appHtml, /src="\/map\.js\?v=3"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=5"/);
   assert.match(appHtml, /src="\/app\.js\?v=80"/);
@@ -141,6 +141,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.doesNotMatch(styles, /#mapPhotoOpen/);
   assert.match(styles, /\.about-dialog/);
   assert.match(styles, /\.about-stats/);
+  assert.match(styles, /\.archive-settings-button\s*\{[^}]*height:\s*42px;/);
   assert.match(styles, /\.date-picker-popover/);
   assert.match(styles, /\.date-picker-day\.is-selected/);
   assert.match(styles, /\.date-picker-day\.has-photo/);
