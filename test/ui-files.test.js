@@ -83,9 +83,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=92"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=93"/);
+  assert.match(appHtml, /src="\/map\.js\?v=3"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=5"/);
-  assert.match(appHtml, /src="\/app\.js\?v=79"/);
+  assert.match(appHtml, /src="\/app\.js\?v=80"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -119,7 +120,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /opacity:\s*0[\s\S]*?translate3d\(var\(--fan-x\),\s*var\(--fan-y\),\s*0\)/);
   assert.match(styles, /#mapPointDelete/);
   assert.match(styles, /\.map-place-picker-grid/);
+  assert.match(styles, /\.map-place-picker-section/);
   assert.match(styles, /\.map-place-picker-item\.is-empty/);
+  assert.match(styles, /\.map-search-results-heading/);
   assert.match(styles, /\.geo-map-selection::after[\s\S]*?top:\s*13px/);
   assert.match(styles, /\.map-photo-picker-grid/);
   assert.match(styles, /grid-template-rows:\s*auto auto auto auto auto minmax\(0,\s*1fr\)/);
@@ -147,6 +150,11 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /hidePhotoOnMap/);
   assert.match(appScript, /deleteActiveMapPoint/);
   assert.match(appScript, /mapPlacePickerCandidates/);
+  assert.match(appScript, /referencePlaceSuggestions/);
+  assert.match(appScript, /function placeSuggestionSections/);
+  assert.match(appScript, /title: 'Недавние'/);
+  assert.match(appScript, /title: 'Популярные'/);
+  assert.match(appScript, /viewerLocationPlaceSearch\?\.showSuggestions\(\)/);
   assert.match(appScript, /linkSelectedPhotoToPlace/);
   assert.match(appScript, /function startMapPhotoPlacement\(\)/);
   assert.match(appScript, /mapAssignmentPhotos = \[photo\]/);

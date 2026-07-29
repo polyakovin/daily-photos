@@ -959,7 +959,10 @@ body.is-photo-dragging .photo-drop-card { transform: none; }
 .map-photo-picker-item strong { font-family: Georgia, serif; font-size: 14px; font-weight: 400; }
 .map-photo-picker-item small { color: var(--muted); font-size: 9px; }
 .map-photo-picker-empty { grid-column: 1 / -1; padding: 40px; color: var(--muted); text-align: center; font-size: 12px; }
-.map-place-picker-grid { min-height: 0; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); grid-auto-rows: max-content; align-content: start; align-items: start; gap: 10px; padding: 2px 4px 4px 2px; overscroll-behavior: contain; }
+.map-place-picker-grid { min-height: 0; overflow: auto; display: grid; align-content: start; gap: 20px; padding: 2px 4px 4px 2px; overscroll-behavior: contain; }
+.map-place-picker-section { display: grid; gap: 9px; }
+.map-place-picker-section > h2 { margin: 0; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.map-place-picker-section-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); grid-auto-rows: max-content; align-items: start; gap: 10px; }
 .map-place-picker-item { min-height: 76px; padding: 12px; display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; gap: 10px; color: var(--ink); text-align: left; background: rgba(255,255,255,.52); border: 1px solid var(--line); border-radius: 14px; cursor: pointer; }
 .map-place-picker-item:hover,
 .map-place-picker-item:focus-visible { border-color: rgba(22,58,48,.42); outline: 3px solid rgba(115,150,123,.18); }
@@ -1670,6 +1673,7 @@ body.presentation-mode .timeline-item img.is-presentation-blurred { filter: blur
 .map-search-results > button:focus-visible { background: rgba(22, 58, 48, .09); outline: none; }
 .map-search-results strong { overflow: hidden; font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .map-search-results small { color: #6d776f; font-size: 9px; }
+.map-search-results > .map-search-results-heading { min-height: 0; padding: 9px 10px 3px; color: #6d776f; font-size: 8px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
 .map-stage-wrap.is-assigning .map-search { top: auto; bottom: 18px; left: 18px; transform: none; }
 .map-stage-wrap.is-adding-place .map-search { top: auto; bottom: 18px; left: 18px; transform: none; }
 .map-controls,

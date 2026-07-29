@@ -9,6 +9,7 @@ const {
   photoFanLayout,
   photoStackPoints,
   project,
+  referencePlaceSuggestions,
   unproject,
   visibleReferencePoints
 } = require('../src/renderer/map');
@@ -112,6 +113,89 @@ test('map replaces a selected reference marker with the linked photo marker', ()
   assert.deepEqual(
     linkedReferencePlaces(places, photos).map(({ id }) => id),
     ['linked-place']
+  );
+});
+
+test('place suggestions rank recent and popular photo locations', () => {
+  const places = [{
+    id: 'popular',
+    name: 'Популярное место',
+    latitude: 55.7558,
+    longitude: 37.6173
+  }, {
+    id: 'recent',
+    name: 'Недавнее место',
+    latitude: 41.7151,
+    longitude: 44.8271
+  }, {
+    id: 'empty',
+    name: 'Без фотографий',
+    latitude: 48.8566,
+    longitude: 2.3522
+  }];
+  const photos = [{
+    id: 'popular-linked',
+    date: '2024-01-01',
+    locationReferenceId: 'popular',
+    latitude: 55.7558,
+    longitude: 37.6173
+  }, {
+    id: 'popular-coordinate',
+    date: '2023-01-01',
+    latitude: 55.7558001,
+    longitude: 37.6173001
+  }, {
+    id: 'popular-older',
+    date: '2022-01-01',
+    locationReferenceId: 'popular',
+    latitude: 55.7558,
+    longitude: 37.6173
+  }, {
+    id: 'recent-linked',
+    date: '2026-06-15',
+    locationReferenceId: 'recent',
+    latitude: 41.7151,
+    longitude: 44.8271
+  }, {
+    id: 'recent-coordinate',
+    date: '2025-08-20',
+    latitude: 41.7151001,
+    longitude: 44.8271001
+  }, {
+    id: 'unrelated',
+    date: '2026-07-01',
+    latitude: 35.6762,
+    longitude: 139.6503
+  }];
+
+  const suggestions = referencePlaceSuggestions(places, photos, 2);
+  assert.deepEqual(
+    suggestions.all.map(({ place, photoCount, latestDate }) => ({
+      id: place.id,
+      photoCount,
+      latestDate
+    })),
+    [{
+      id: 'empty',
+      photoCount: 0,
+      latestDate: ''
+    }, {
+      id: 'recent',
+      photoCount: 2,
+      latestDate: '2026-06-15'
+    }, {
+      id: 'popular',
+      photoCount: 3,
+      latestDate: '2024-01-01'
+    }]
+  );
+  assert.deepEqual(
+    suggestions.recent.map(({ place }) => place.id),
+    ['recent', 'popular']
+  );
+  assert.deepEqual(
+    suggestions.popular.map(({ place }) => place.id),
+    ['popular', 'recent']
   );
 });
 

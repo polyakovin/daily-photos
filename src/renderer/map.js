@@ -91,6 +91,59 @@
       .filter((place) => linkedReferenceIds.has(place.id));
   }
 
+  function referencePlaceSuggestions(places, photos, limit = 6) {
+    const stats = (Array.isArray(places) ? places : []).map((place) => ({
+      place,
+      photoCount: 0,
+      latestDate: ''
+    }));
+    const statsById = new Map();
+    const statsByCoordinates = new Map();
+    for (const stat of stats) {
+      if (stat.place?.id) statsById.set(stat.place.id, stat);
+      const coordinateKey = mapCoordinateKey(stat.place);
+      if (!coordinateKey) continue;
+      const coordinateStats = statsByCoordinates.get(coordinateKey) || [];
+      coordinateStats.push(stat);
+      statsByCoordinates.set(coordinateKey, coordinateStats);
+    }
+
+    for (const photo of Array.isArray(photos) ? photos : []) {
+      const matchingStats = new Set();
+      const linkedStat = statsById.get(photo?.locationReferenceId);
+      if (linkedStat) matchingStats.add(linkedStat);
+      const coordinateKey = mapCoordinateKey(photo);
+      for (const stat of statsByCoordinates.get(coordinateKey) || []) matchingStats.add(stat);
+      for (const stat of matchingStats) {
+        stat.photoCount += 1;
+        const date = typeof photo?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(photo.date)
+          ? photo.date
+          : '';
+        if (date > stat.latestDate) stat.latestDate = date;
+      }
+    }
+
+    const compareNames = (a, b) => (
+      String(a.place?.name || '').localeCompare(String(b.place?.name || ''), 'ru')
+      || String(a.place?.country || '').localeCompare(String(b.place?.country || ''), 'ru')
+    );
+    const used = stats.filter(({ photoCount }) => photoCount > 0);
+    const safeLimit = Math.max(0, Math.trunc(Number(limit) || 0));
+    return {
+      all: [...stats].sort(compareNames),
+      recent: [...used].sort((a, b) => (
+        b.latestDate.localeCompare(a.latestDate)
+        || b.photoCount - a.photoCount
+        || compareNames(a, b)
+      )).slice(0, safeLimit),
+      popular: [...used].sort((a, b) => (
+        b.photoCount - a.photoCount
+        || b.latestDate.localeCompare(a.latestDate)
+        || compareNames(a, b)
+      )).slice(0, safeLimit)
+    };
+  }
+
   function visibleReferencePoints(places, photos) {
     const locatedPhotos = (Array.isArray(photos) ? photos : [])
       .filter((photo) => mapCoordinateKey(photo));
@@ -736,6 +789,7 @@
     photoFanLayout,
     photoStackPoints,
     project,
+    referencePlaceSuggestions,
     unproject,
     visibleReferencePoints
   };

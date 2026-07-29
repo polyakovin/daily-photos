@@ -19,6 +19,7 @@ const {
   mapCoordinateKey,
   normalizeCoordinates: normalizeMapCoordinates,
   parseCoordinateQuery,
+  referencePlaceSuggestions,
   visibleReferencePoints
 } = window.PhotoDayMap;
 const {
@@ -1451,7 +1452,8 @@ function setupLocationSearch({
   input,
   resultsElement,
   getMap,
-  onSelect
+  onSelect,
+  getSuggestionSections
 }) {
   let requestController = null;
   const submitButton = form.querySelector(':scope > button[type="submit"]');
@@ -1476,25 +1478,41 @@ function setupLocationSearch({
     onSelect?.(location, result);
   }
 
+  function resultButton(result) {
+    const button = document.createElement('button');
+    const title = document.createElement('strong');
+    const details = document.createElement('small');
+    button.type = 'button';
+    title.textContent = result.displayName;
+    title.title = result.displayName;
+    details.textContent = result.suggestionDetail
+      || `${Number(result.latitude).toFixed(5)}, ${Number(result.longitude).toFixed(5)}`;
+    button.replaceChildren(title, details);
+    button.addEventListener('click', () => choose(result));
+    return button;
+  }
+
   function showResults(results) {
     if (!results.length) {
       showStatus('Ничего не найдено. Попробуйте уточнить запрос.', true);
       return;
     }
-    const buttons = results.map((result) => {
-      const button = document.createElement('button');
-      const title = document.createElement('strong');
-      const details = document.createElement('small');
-      button.type = 'button';
-      title.textContent = result.displayName;
-      title.title = result.displayName;
-      details.textContent = `${Number(result.latitude).toFixed(5)}, ${Number(result.longitude).toFixed(5)}`;
-      button.replaceChildren(title, details);
-      button.addEventListener('click', () => choose(result));
-      return button;
-    });
+    const buttons = results.map(resultButton);
     resultsElement.replaceChildren(...buttons);
     resultsElement.hidden = false;
+  }
+
+  function showSuggestions() {
+    const sections = getSuggestionSections?.() || [];
+    const nodes = sections.flatMap((section) => {
+      if (!section.results?.length) return [];
+      const heading = document.createElement('span');
+      heading.className = 'map-search-results-heading';
+      heading.textContent = section.title;
+      return [heading, ...section.results.map(resultButton)];
+    });
+    resultsElement.replaceChildren(...nodes);
+    resultsElement.hidden = nodes.length === 0;
   }
 
   form.addEventListener('submit', async (event) => {
@@ -1525,12 +1543,20 @@ function setupLocationSearch({
     resultsElement.hidden = true;
     input.blur();
   });
+  input.addEventListener('focus', () => {
+    if (!input.value.trim()) showSuggestions();
+  });
+  input.addEventListener('input', () => {
+    if (!input.value.trim()) showSuggestions();
+    else resultsElement.hidden = true;
+  });
 
   return {
     clear() {
       requestController?.abort();
       resultsElement.hidden = true;
-    }
+    },
+    showSuggestions
   };
 }
 
@@ -2111,18 +2137,26 @@ async function linkPhotoToMapPlace(photo, place) {
   }
 }
 
+function placeSuggestionSections(limit = 6, { includeAll = false } = {}) {
+  const suggestions = referencePlaceSuggestions(locationReferencePlaces, photos, limit);
+  return [{
+    title: 'Недавние',
+    type: 'recent',
+    candidates: suggestions.recent
+  }, {
+    title: 'Популярные',
+    type: 'popular',
+    candidates: suggestions.popular
+  }, ...(includeAll ? [{
+    title: 'Все места',
+    type: 'all',
+    candidates: suggestions.all
+  }] : [])].filter(({ candidates }) => candidates.length);
+}
+
 function mapPlacePickerCandidates(query = '') {
   const normalizedQuery = query.trim().toLocaleLowerCase('ru-RU');
-  const photoCounts = new Map();
-  for (const photo of photos) {
-    if (!photo.locationReferenceId || !photoHasLocation(photo)) continue;
-    photoCounts.set(
-      photo.locationReferenceId,
-      (photoCounts.get(photo.locationReferenceId) || 0) + 1
-    );
-  }
-  return locationReferencePlaces
-    .map((place) => ({ place, photoCount: photoCounts.get(place.id) || 0 }))
+  return referencePlaceSuggestions(locationReferencePlaces, photos, locationReferencePlaces.length).all
     .filter(({ place }) => (
       !normalizedQuery
       || referencePlaceVariants(place).flatMap((variant) => [
@@ -2132,54 +2166,79 @@ function mapPlacePickerCandidates(query = '') {
       ])
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase('ru-RU').includes(normalizedQuery))
-    ))
-    .sort((a, b) => (
-      Number(a.photoCount > 0) - Number(b.photoCount > 0)
-      || String(a.place.name).localeCompare(String(b.place.name), 'ru')
-      || String(a.place.country || '').localeCompare(String(b.place.country || ''), 'ru')
     ));
+}
+
+function mapPlacePickerItem({ place, photoCount, latestDate }, type = 'all') {
+  const button = document.createElement('button');
+  const marker = document.createElement('i');
+  const markerLabel = document.createElement('span');
+  const copy = document.createElement('span');
+  const title = document.createElement('strong');
+  const status = document.createElement('small');
+  button.type = 'button';
+  button.className = `map-place-picker-item${photoCount ? '' : ' is-empty'}`;
+  button.disabled = mapPlacePickerSaving;
+  markerLabel.textContent = photoCount ? String(Math.min(photoCount, 99)) : '+';
+  marker.replaceChildren(markerLabel);
+  title.textContent = [place.name, place.country].filter(Boolean).join(' · ');
+  const photoCountLabel = `${photoCount.toLocaleString('ru-RU')} ${pluralize(photoCount, ['фотография', 'фотографии', 'фотографий'])}`;
+  status.textContent = type === 'recent' && latestDate
+    ? `Последнее фото: ${formatDate(latestDate)} · ${photoCountLabel}`
+    : photoCount ? photoCountLabel : 'Без фотографий';
+  copy.replaceChildren(title, status);
+  button.replaceChildren(marker, copy);
+  button.addEventListener('click', () => void linkSelectedPhotoToPlace(place));
+  return button;
+}
+
+function mapPlacePickerSection({ title, type, candidates }) {
+  const section = document.createElement('section');
+  const heading = document.createElement('h2');
+  const grid = document.createElement('div');
+  section.className = 'map-place-picker-section';
+  heading.textContent = title;
+  grid.className = 'map-place-picker-section-grid';
+  grid.replaceChildren(...candidates.map((candidate) => mapPlacePickerItem(candidate, type)));
+  section.replaceChildren(heading, grid);
+  return section;
 }
 
 function renderMapPlacePicker() {
   const photo = mapPlacePickerActivePhoto;
   if (!photo) return;
-  const candidates = mapPlacePickerCandidates(mapPlacePickerSearch.value);
+  const query = mapPlacePickerSearch.value.trim();
+  const candidates = mapPlacePickerCandidates(query);
   const visibleCandidates = candidates.slice(0, 240);
-  const emptyCount = candidates.filter(({ photoCount }) => photoCount === 0).length;
-  mapPlacePickerStatus.textContent = candidates.length > visibleCandidates.length
-    ? `Показаны первые ${visibleCandidates.length.toLocaleString('ru-RU')} из ${candidates.length.toLocaleString('ru-RU')}. Уточните название в поиске.`
-    : `${emptyCount.toLocaleString('ru-RU')} без фотографий · ${candidates.length.toLocaleString('ru-RU')} ${pluralize(candidates.length, ['место', 'места', 'мест'])}`;
+  const sections = query
+    ? [{
+      title: 'Результаты поиска',
+      type: 'all',
+      candidates: visibleCandidates
+    }]
+    : placeSuggestionSections(6, { includeAll: true }).map((section) => ({
+      ...section,
+      candidates: section.candidates.slice(0, section.type === 'all' ? 240 : 6)
+    }));
 
-  if (!visibleCandidates.length) {
+  if (query) {
+    mapPlacePickerStatus.textContent = candidates.length > visibleCandidates.length
+      ? `Показаны первые ${visibleCandidates.length.toLocaleString('ru-RU')} из ${candidates.length.toLocaleString('ru-RU')}. Уточните название в поиске.`
+      : `${candidates.length.toLocaleString('ru-RU')} ${pluralize(candidates.length, ['место', 'места', 'мест'])}`;
+  } else {
+    const recentCount = sections.find(({ type }) => type === 'recent')?.candidates.length || 0;
+    const popularCount = sections.find(({ type }) => type === 'popular')?.candidates.length || 0;
+    mapPlacePickerStatus.textContent = `${recentCount.toLocaleString('ru-RU')} недавних · ${popularCount.toLocaleString('ru-RU')} популярных · ${candidates.length.toLocaleString('ru-RU')} всего`;
+  }
+
+  if (!sections.some(({ candidates: sectionCandidates }) => sectionCandidates.length)) {
     const empty = document.createElement('p');
     empty.className = 'map-photo-picker-empty';
-    empty.textContent = 'Сохранённые места не найдены';
+    empty.textContent = query ? 'Сохранённые места не найдены' : 'Сохранённых мест пока нет';
     mapPlacePickerGrid.replaceChildren(empty);
     return;
   }
-
-  const buttons = visibleCandidates.map(({ place, photoCount }) => {
-    const button = document.createElement('button');
-    const marker = document.createElement('i');
-    const markerLabel = document.createElement('span');
-    const copy = document.createElement('span');
-    const title = document.createElement('strong');
-    const status = document.createElement('small');
-    button.type = 'button';
-    button.className = `map-place-picker-item${photoCount ? '' : ' is-empty'}`;
-    button.disabled = mapPlacePickerSaving;
-    markerLabel.textContent = photoCount ? String(Math.min(photoCount, 99)) : '+';
-    marker.replaceChildren(markerLabel);
-    title.textContent = [place.name, place.country].filter(Boolean).join(' · ');
-    status.textContent = photoCount
-      ? `${photoCount.toLocaleString('ru-RU')} ${pluralize(photoCount, ['фотография', 'фотографии', 'фотографий'])}`
-      : 'Без фотографий';
-    copy.replaceChildren(title, status);
-    button.replaceChildren(marker, copy);
-    button.addEventListener('click', () => void linkSelectedPhotoToPlace(place));
-    return button;
-  });
-  mapPlacePickerGrid.replaceChildren(...buttons);
+  mapPlacePickerGrid.replaceChildren(...sections.map(mapPlacePickerSection));
 }
 
 function openMapPlacePicker(photo = activeMapPhotos[activeMapPhotoIndex], context = 'map') {
@@ -2466,6 +2525,8 @@ function openViewerLocationEditor() {
       ? 'Метка из EXIF'
       : photo.locationSource ? 'Автоматическая метка' : 'Метки нет';
   setViewerLocationDraft(location);
+  viewerLocationSearchInput.value = '';
+  viewerLocationPlaceSearch?.showSuggestions();
   requestAnimationFrame(() => {
     viewerLocationMap.setCenter(
       location || mainView || { latitude: 30, longitude: 20 },
@@ -4086,7 +4147,19 @@ viewerLocationPlaceSearch = setupLocationSearch({
     ensureViewerLocationMap();
     return viewerLocationMap;
   },
-  onSelect: setViewerLocationDraft
+  onSelect: setViewerLocationDraft,
+  getSuggestionSections: () => placeSuggestionSections(5).map(({ title, type, candidates }) => ({
+    title,
+    results: candidates.map(({ place, photoCount, latestDate }) => ({
+      ...place,
+      referenceId: place.id,
+      place: place.name,
+      displayName: [place.name, place.country].filter(Boolean).join(' · '),
+      suggestionDetail: type === 'recent' && latestDate
+        ? `Последнее фото: ${formatDate(latestDate)}`
+        : `${photoCount.toLocaleString('ru-RU')} ${pluralize(photoCount, ['фотография', 'фотографии', 'фотографий'])}`
+    }))
+  }))
 });
 mapAddPlaceButton.addEventListener('click', startMapPlaceCreation);
 mapAssignButton.addEventListener('click', startMapAssignment);
