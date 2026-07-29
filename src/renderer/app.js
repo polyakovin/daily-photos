@@ -3672,7 +3672,7 @@ function openViewerDateEditor() {
   viewerDateEdit.hidden = true;
   viewerDateStatus.textContent = '';
   viewerDateStatus.classList.remove('is-error');
-  viewerDatePicker.focus();
+  viewerDatePicker.open();
 }
 
 function isValidViewerPhotoDate(value) {

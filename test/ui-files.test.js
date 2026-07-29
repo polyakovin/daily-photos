@@ -86,7 +86,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /href="\/styles\.css\?v=95"/);
   assert.match(appHtml, /src="\/map\.js\?v=3"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=5"/);
-  assert.match(appHtml, /src="\/app\.js\?v=80"/);
+  assert.match(appHtml, /src="\/app\.js\?v=81"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -177,6 +177,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /onPhotoClick:\s*openMapFanPhoto/);
   assert.match(appScript, /changeViewerPhotoDate/);
   assert.match(appScript, /viewerDatePicker\.setPhotoDates\(byDate\.keys\(\)\)/);
+  const viewerDateEditorBody = appScript.match(/function openViewerDateEditor\(\) \{([\s\S]*?)\n\}/)?.[1];
+  assert.ok(viewerDateEditorBody);
+  assert.match(viewerDateEditorBody, /viewerDatePicker\.open\(\)/);
+  assert.doesNotMatch(viewerDateEditorBody, /viewerDatePicker\.focus\(\)/);
   assert.match(appScript, /\/api\/photos\/\$\{photo\.id\}\/date/);
   assert.match(appScript, /fetch\('\/api\/app-info'\)/);
   assert.match(appScript, /function renderAboutInfo/);
