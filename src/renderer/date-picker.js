@@ -105,6 +105,17 @@
     return dateKey(parsed);
   }
 
+  function adjustDateByArrow(value, key, bounds = {}) {
+    const monthOffset = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: 12,
+      ArrowDown: -12
+    }[key];
+    if (!monthOffset || !dateFromKey(value)) return '';
+    return clampDate(addCalendarMonths(value, monthOffset), bounds);
+  }
+
   function buildCalendarMonth(year, month) {
     const firstDay = new Date(year, month, 1);
     firstDay.setDate(firstDay.getDate() - ((firstDay.getDay() + 6) % 7));
@@ -168,7 +179,7 @@
           <button class="date-picker-today" type="button">Сегодня</button>
           <button class="date-picker-clear" type="button">Очистить</button>
         </div>
-        <p class="date-picker-help" id="${this.id}-help">Стрелки — дни · Page Up/Down — месяцы</p>
+        <p class="date-picker-help" id="${this.id}-help">В календаре: стрелки — дни · Page Up/Down — месяцы</p>
       `;
       this.monthLabel = this.popover.querySelector('.date-picker-month');
       this.grid = this.popover.querySelector('.date-picker-grid');
@@ -182,7 +193,7 @@
       const formatDescription = document.createElement('span');
       formatDescription.id = `${this.id}-format`;
       formatDescription.className = 'sr-only';
-      formatDescription.textContent = 'Формат даты: день, месяц и год. Например, 9.7.1990.';
+      formatDescription.textContent = 'Формат даты: день, месяц и год. Например, 9.7.1990. В поле стрелки влево и вправо меняют месяц, вверх и вниз — год.';
       this.wrapper.append(formatDescription);
       const describedBy = (this.input.getAttribute('aria-describedby') || '').trim();
       this.input.setAttribute('aria-describedby', [describedBy, formatDescription.id].filter(Boolean).join(' '));
@@ -216,6 +227,11 @@
           this.close();
         } else if (event.key === 'Enter') {
           this.commitInput();
+        } else if (!event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+          const next = adjustDateByArrow(this._value, event.key, this.bounds());
+          if (!next) return;
+          event.preventDefault();
+          if (next !== this._value) this.setValue(next, { notify: true });
         }
       });
 
@@ -542,6 +558,7 @@
 
   return {
     DatePicker,
+    adjustDateByArrow,
     addCalendarDays,
     addCalendarMonths,
     buildCalendarMonth,
