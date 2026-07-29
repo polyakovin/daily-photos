@@ -1,10 +1,10 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
-  addCalendarDays,
   addCalendarMonths,
   buildCalendarMonth,
   formatDateKey,
+  moveCalendarViewByArrow,
   parseDateText
 } = require('../src/renderer/date-picker');
 
@@ -32,8 +32,13 @@ test('builds a Monday-first six-week calendar grid', () => {
   assert.deepEqual(days.at(-1), { date: '2026-08-09', inMonth: false });
 });
 
-test('moves calendar focus without skipping across short months', () => {
-  assert.equal(addCalendarDays('2026-07-29', 7), '2026-08-05');
+test('moves calendar view by months horizontally and years vertically', () => {
+  assert.equal(moveCalendarViewByArrow('2026-07-29', 'ArrowLeft'), '2026-06-29');
+  assert.equal(moveCalendarViewByArrow('2026-07-29', 'ArrowRight'), '2026-08-29');
+  assert.equal(moveCalendarViewByArrow('2026-07-29', 'ArrowUp'), '2027-07-29');
+  assert.equal(moveCalendarViewByArrow('2026-07-29', 'ArrowDown'), '2025-07-29');
+  assert.equal(moveCalendarViewByArrow('2024-02-29', 'ArrowUp'), '2025-02-28');
+  assert.equal(moveCalendarViewByArrow('2026-07-29', 'Home'), '');
   assert.equal(addCalendarMonths('2024-01-31', 1), '2024-02-29');
   assert.equal(addCalendarMonths('2025-01-31', 1), '2025-02-28');
   assert.equal(addCalendarMonths('2024-02-29', 12), '2025-02-28');

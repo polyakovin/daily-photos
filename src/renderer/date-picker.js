@@ -87,13 +87,6 @@
     return `${day}.${month}.${year}`;
   }
 
-  function addCalendarDays(value, amount) {
-    const parsed = dateFromKey(value);
-    if (!parsed) return '';
-    parsed.setDate(parsed.getDate() + amount);
-    return dateKey(parsed);
-  }
-
   function addCalendarMonths(value, amount) {
     const parsed = dateFromKey(value);
     if (!parsed) return '';
@@ -103,6 +96,16 @@
     const lastDay = new Date(parsed.getFullYear(), parsed.getMonth() + 1, 0).getDate();
     parsed.setDate(Math.min(day, lastDay));
     return dateKey(parsed);
+  }
+
+  function moveCalendarViewByArrow(value, key) {
+    const monthOffset = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: 12,
+      ArrowDown: -12
+    }[key];
+    return monthOffset ? addCalendarMonths(value, monthOffset) : '';
   }
 
   function buildCalendarMonth(year, month) {
@@ -158,11 +161,9 @@
       this.popover.hidden = true;
       this.popover.innerHTML = `
         <div class="date-picker-header">
-          <button class="date-picker-nav date-picker-year-nav date-picker-previous-year" type="button" aria-label="Предыдущий год">↑</button>
           <button class="date-picker-nav date-picker-previous" type="button" aria-label="Предыдущий месяц">←</button>
           <strong class="date-picker-month" aria-live="polite"></strong>
           <button class="date-picker-nav date-picker-next" type="button" aria-label="Следующий месяц">→</button>
-          <button class="date-picker-nav date-picker-year-nav date-picker-next-year" type="button" aria-label="Следующий год">↓</button>
         </div>
         <div class="date-picker-weekdays" role="row"></div>
         <div class="date-picker-grid" role="grid"></div>
@@ -170,14 +171,12 @@
           <button class="date-picker-today" type="button">Сегодня</button>
           <button class="date-picker-clear" type="button">Очистить</button>
         </div>
-        <p class="date-picker-help" id="${this.id}-help">Кнопки ←/→ — месяцы · ↑/↓ — годы · В сетке стрелки — дни</p>
+        <p class="date-picker-help" id="${this.id}-help">В сетке: ←/→ — месяцы · ↑/↓ — годы</p>
       `;
       this.monthLabel = this.popover.querySelector('.date-picker-month');
       this.grid = this.popover.querySelector('.date-picker-grid');
-      this.previousYearButton = this.popover.querySelector('.date-picker-previous-year');
       this.previousButton = this.popover.querySelector('.date-picker-previous');
       this.nextButton = this.popover.querySelector('.date-picker-next');
-      this.nextYearButton = this.popover.querySelector('.date-picker-next-year');
       this.todayButton = this.popover.querySelector('.date-picker-today');
       this.clearButton = this.popover.querySelector('.date-picker-clear');
       this.grid.setAttribute('aria-describedby', `${this.id}-help`);
@@ -227,10 +226,8 @@
         if (this.isOpen()) this.close();
         else this.open();
       });
-      this.previousYearButton.addEventListener('click', () => this.changeMonth(-12));
       this.previousButton.addEventListener('click', () => this.changeMonth(-1));
       this.nextButton.addEventListener('click', () => this.changeMonth(1));
-      this.nextYearButton.addEventListener('click', () => this.changeMonth(12));
       this.todayButton.addEventListener('click', () => this.select(dateKey(new Date())));
       this.clearButton.addEventListener('click', () => this.select(''));
       this.grid.addEventListener('keydown', (event) => this.handleGridKeydown(event));
@@ -432,12 +429,8 @@
 
       const previousMonthEnd = dateKey(new Date(year, month, 0));
       const nextMonthStart = dateKey(new Date(year, month + 1, 1));
-      const previousYearEnd = dateKey(new Date(year, 0, 0));
-      const nextYearStart = dateKey(new Date(year + 1, 0, 1));
-      this.previousYearButton.disabled = Boolean(bounds.min && previousYearEnd < bounds.min);
       this.previousButton.disabled = Boolean(bounds.min && previousMonthEnd < bounds.min);
       this.nextButton.disabled = Boolean(bounds.max && nextMonthStart > bounds.max);
-      this.nextYearButton.disabled = Boolean(bounds.max && nextYearStart > bounds.max);
       this.todayButton.disabled = !dateWithinBounds(today, bounds);
     }
 
@@ -467,29 +460,14 @@
       const target = event.target.closest('.date-picker-day');
       if (!target) return;
       const value = target.dataset.date;
-      let next = '';
-      if (event.key === 'ArrowLeft') next = addCalendarDays(value, -1);
-      else if (event.key === 'ArrowRight') next = addCalendarDays(value, 1);
-      else if (event.key === 'ArrowUp') next = addCalendarDays(value, -7);
-      else if (event.key === 'ArrowDown') next = addCalendarDays(value, 7);
-      else if (event.key === 'Home') {
-        const parsed = dateFromKey(value);
-        next = addCalendarDays(value, -((parsed.getDay() + 6) % 7));
-      } else if (event.key === 'End') {
-        const parsed = dateFromKey(value);
-        next = addCalendarDays(value, 6 - ((parsed.getDay() + 6) % 7));
-      } else if (event.key === 'PageUp') {
-        next = addCalendarMonths(value, event.shiftKey ? -12 : -1);
-      } else if (event.key === 'PageDown') {
-        next = addCalendarMonths(value, event.shiftKey ? 12 : 1);
-      } else if (event.key === 'Enter' || event.key === ' ') {
+      const next = moveCalendarViewByArrow(value, event.key);
+      if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         event.stopPropagation();
         this.select(value);
         return;
-      } else {
-        return;
       }
+      if (!next) return;
       event.preventDefault();
       event.stopPropagation();
       this.focusDate(next);
@@ -497,10 +475,8 @@
 
     trapTabKey(event) {
       const controls = [
-        this.previousYearButton,
         this.previousButton,
         this.nextButton,
-        this.nextYearButton,
         this.grid.querySelector('.date-picker-day[tabindex="0"]'),
         this.todayButton,
         this.clearButton.hidden ? null : this.clearButton
@@ -554,11 +530,11 @@
 
   return {
     DatePicker,
-    addCalendarDays,
     addCalendarMonths,
     buildCalendarMonth,
     createDatePicker,
     formatDateKey,
+    moveCalendarViewByArrow,
     parseDateText
   };
 }));
