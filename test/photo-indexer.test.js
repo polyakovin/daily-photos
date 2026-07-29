@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   dateFromPath,
   dateKeyFromValue,
+  embeddedPhotoLocation,
   importedDateFromPath,
   indexPhotoRoots,
   normalizePhotoLocation,
@@ -27,6 +28,42 @@ test('normalizes valid EXIF GPS coordinates and rejects impossible values', () =
   assert.equal(normalizePhotoLocation({ latitude: 0, longitude: 0 }), null);
   assert.equal(normalizePhotoLocation({ latitude: 91, longitude: 37 }), null);
   assert.equal(normalizePhotoLocation({ latitude: 55, longitude: 'unknown' }), null);
+});
+
+test('reads GPS from the EXIF chunk of an imported WebP', async (t) => {
+  const temporaryRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'photo-day-webp-gps-'));
+  const photoPath = path.join(temporaryRoot, 'imported.webp');
+  const exif = Buffer.from(
+    'TU0AKgAAAAgABQEaAAUAAAABAAAASgEbAAUAAAABAAAAUgEoAAMAAAABAAIAAAITAAMAAAABAAEAAIglAAQAAAABAAAAWgAAAAAAAABIAAAAAQAAAEgAAAABAAUAAAABAAAABAIDAAAAAQACAAAAAk4AAAAAAgAFAAAAAwAAAJwAAwACAAAAAkUAAAAABAAFAAAAAwAAALQAAAAAAAAAKQAAAAEAAAA2AAAAAQAAAPwAAAAZAAAADAAAAAEAAAAdAAAAAQAABJgAAAAZ',
+    'base64'
+  );
+  const chunk = Buffer.alloc(8 + exif.length + exif.length % 2);
+  chunk.write('EXIF', 0, 'ascii');
+  chunk.writeUInt32LE(exif.length, 4);
+  exif.copy(chunk, 8);
+  const header = Buffer.alloc(12);
+  header.write('RIFF', 0, 'ascii');
+  header.writeUInt32LE(4 + chunk.length, 4);
+  header.write('WEBP', 8, 'ascii');
+  await fs.promises.writeFile(photoPath, Buffer.concat([header, chunk]));
+  t.after(() => fs.promises.rm(temporaryRoot, { recursive: true, force: true }));
+
+  const location = await embeddedPhotoLocation(photoPath);
+  assert.deepEqual(location, { latitude: 41.9028, longitude: 12.4964 });
+});
+
+test('does not start the WebP fallback for ordinary files without GPS', async () => {
+  let fallbackCalls = 0;
+  const location = await embeddedPhotoLocation('/tmp/imported.jpg', {
+    readEmbeddedGps: async () => null,
+    readWebpGps: async () => {
+      fallbackCalls += 1;
+      return { latitude: 41.9028, longitude: 12.4964 };
+    }
+  });
+
+  assert.equal(location, null);
+  assert.equal(fallbackCalls, 0);
 });
 
 test('keeps compatibility with supported archive paths', () => {

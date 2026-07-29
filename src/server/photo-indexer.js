@@ -63,6 +63,7 @@ const ROOT_SYSTEM_DIRECTORIES_LOWER = new Set(
 );
 const MAX_CONCURRENCY = 8;
 const PROGRESS_INTERVAL_MS = 120;
+const MAX_WEBP_EXIF_SIZE = 16 * 1024 * 1024;
 
 function isUsableDate(value) {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) return false;
@@ -155,9 +156,66 @@ function normalizePhotoLocation(value) {
   return { latitude, longitude };
 }
 
-async function embeddedPhotoLocation(filePath) {
+async function readFileBlock(handle, length, position) {
+  const buffer = Buffer.alloc(length);
+  const { bytesRead } = await handle.read(buffer, 0, length, position);
+  return bytesRead === length ? buffer : null;
+}
+
+async function webpExifBlock(filePath) {
+  const handle = await fs.promises.open(filePath, 'r');
   try {
-    return normalizePhotoLocation(await exifr.gps(filePath));
+    const { size: fileSize } = await handle.stat();
+    const header = await readFileBlock(handle, 12, 0);
+    if (
+      !header
+      || header.toString('ascii', 0, 4) !== 'RIFF'
+      || header.toString('ascii', 8, 12) !== 'WEBP'
+    ) return null;
+    let offset = 12;
+    while (offset + 8 <= fileSize) {
+      const chunkHeader = await readFileBlock(handle, 8, offset);
+      if (!chunkHeader) return null;
+      const chunkType = chunkHeader.toString('ascii', 0, 4);
+      const chunkSize = chunkHeader.readUInt32LE(4);
+      const chunkStart = offset + 8;
+      const chunkEnd = chunkStart + chunkSize;
+      if (chunkEnd > fileSize) return null;
+      if (chunkType === 'EXIF') {
+        if (chunkSize > MAX_WEBP_EXIF_SIZE) return null;
+        const block = await readFileBlock(handle, chunkSize, chunkStart);
+        if (!block) return null;
+        return block.subarray(0, 6).toString('binary') === 'Exif\0\0'
+          ? block.subarray(6)
+          : block;
+      }
+      offset = chunkEnd + chunkSize % 2;
+    }
+    return null;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function webpPhotoLocation(filePath) {
+  const exif = await webpExifBlock(filePath);
+  return exif ? exifr.gps(exif) : null;
+}
+
+async function embeddedPhotoLocation(filePath, {
+  readEmbeddedGps = (target) => exifr.gps(target),
+  readWebpGps = webpPhotoLocation
+} = {}) {
+  if (path.extname(filePath).toLowerCase() === '.webp') {
+    try {
+      return normalizePhotoLocation(await readWebpGps(filePath));
+    } catch {
+      // Повреждённый EXIF-блок WebP не должен мешать индексированию.
+      return null;
+    }
+  }
+  try {
+    return normalizePhotoLocation(await readEmbeddedGps(filePath));
   } catch {
     // Отсутствующий или повреждённый GPS-блок не должен мешать индексированию.
     return null;
