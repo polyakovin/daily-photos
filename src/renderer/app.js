@@ -1306,7 +1306,11 @@ async function findLocationResults(query, signal) {
   if (coordinates) return [coordinates];
   const normalizedQuery = String(query || '').trim().toLocaleLowerCase('ru-RU');
   const localResults = sortedReferencePlaces(locationReferencePlaces.filter((place) => (
-    [place.name, place.country, place.collection]
+    referencePlaceVariants(place).flatMap((variant) => [
+      variant.name,
+      variant.country,
+      variant.collection
+    ])
       .filter(Boolean)
       .some((value) => value.toLocaleLowerCase('ru-RU').includes(normalizedQuery))
   ))).slice(0, 8).map((place) => ({
@@ -1483,9 +1487,20 @@ function distinctPlaceCount(points) {
 }
 
 function referenceSourceLabel(place) {
+  const sources = new Set(referencePlaceVariants(place).map((variant) => variant.source));
+  if (sources.has('home-office') && sources.has('organic-maps')) {
+    return 'Obsidian + Organic Maps';
+  }
   if (place?.source === 'home-office') return 'Obsidian';
   if (place?.source === 'organic-maps') return 'Organic Maps';
   return 'Добавлено вручную';
+}
+
+function referencePlaceVariants(place) {
+  return [
+    place,
+    ...(Array.isArray(place?.mergedPlaces) ? place.mergedPlaces : [])
+  ].filter(Boolean);
 }
 
 function referenceEvidenceLabel(place) {
@@ -2003,7 +2018,11 @@ function mapPlacePickerCandidates(query = '') {
     .map((place) => ({ place, photoCount: photoCounts.get(place.id) || 0 }))
     .filter(({ place }) => (
       !normalizedQuery
-      || [place.name, place.country, place.collection]
+      || referencePlaceVariants(place).flatMap((variant) => [
+        variant.name,
+        variant.country,
+        variant.collection
+      ])
         .filter(Boolean)
         .some((value) => String(value).toLocaleLowerCase('ru-RU').includes(normalizedQuery))
     ))

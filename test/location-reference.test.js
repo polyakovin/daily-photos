@@ -7,6 +7,7 @@ const {
   normalizeReferencePlace,
   readLocationReference
 } = require('../src/server/location-reference');
+const { readLocationData } = require('../src/server/location-storage');
 const { readPhotoLocations } = require('../src/server/photo-locations');
 const { startPhotoDayServer } = require('../src/server');
 
@@ -80,6 +81,7 @@ test('location reference is exposed from the selected archive folder', async (t)
     port: 0
   });
   await server.reindex();
+  assert.equal(fs.existsSync(path.join(archiveRoot, 'location_reference.json')), false);
 
   const response = await fetch(`${server.url}/api/location-reference`);
   assert.equal(response.status, 200);
@@ -123,7 +125,10 @@ test('location reference is exposed from the selected archive folder', async (t)
     evidence: 'manual'
   });
   assert.deepEqual(
-    readLocationReference(path.join(archiveRoot, 'location_reference.json')).places.at(-1),
+    readLocationData(
+      path.join(archiveRoot, 'photo_locations.json'),
+      path.join(archiveRoot, 'location_reference.json')
+    ).documentMetadata.places.at(-1),
     createdPlace
   );
 
@@ -158,18 +163,20 @@ test('location reference is exposed from the selected archive folder', async (t)
       locationSource: null,
       locationPlace: null,
       locationCountry: null,
-      locationReferenceId: null,
-      locationHidden: true
+      locationReferenceId: null
     }]
   });
   assert.equal(
-    readLocationReference(path.join(archiveRoot, 'location_reference.json'))
-      .places.some((place) => place.id === createdPlace.id),
+    readLocationData(
+      path.join(archiveRoot, 'photo_locations.json'),
+      path.join(archiveRoot, 'location_reference.json')
+    ).documentMetadata.places.some((place) => place.id === createdPlace.id),
     false
   );
-  assert.deepEqual(
-    readPhotoLocations(path.join(archiveRoot, 'photo_locations.json')).get('2026-07-24.jpg'),
-    { hidden: true }
+  assert.equal(
+    readPhotoLocations(path.join(archiveRoot, 'photo_locations.json'))
+      .has('2026-07-24.jpg'),
+    false
   );
 
   const missingDeleteResponse = await fetch(

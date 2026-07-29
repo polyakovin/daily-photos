@@ -96,7 +96,7 @@ function readPhotoLocations(filePath) {
     if (!document || typeof document !== 'object' || Array.isArray(document)) {
       throw new Error('ожидался объект');
     }
-    const values = document.version === PHOTO_LOCATION_DOCUMENT_VERSION
+    const values = document.version && document.photos
       ? document.photos
       : document;
     if (!values || typeof values !== 'object' || Array.isArray(values)) {

@@ -5,10 +5,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
-  normalizeLocationKey,
-  readPhotoLocations,
-  serializePhotoLocations
+  normalizeLocationKey
 } = require('../src/server/photo-locations');
+const {
+  consolidateLocationData,
+  readLocationData,
+  serializeLocationData,
+  setLocationDocumentMetadata
+} = require('../src/server/location-storage');
 
 const DATE_RE = /^(?:19|20)\d{2}-\d{2}-\d{2}$/;
 
@@ -411,6 +415,9 @@ function buildPhotoGeodata(options) {
   const required = ['archive-index', 'archive-root', 'home-office', 'organic-maps'];
   const missing = required.filter((key) => !options[key]);
   if (missing.length) throw new Error(`Не указаны параметры: ${missing.map((key) => `--${key}`).join(', ')}`);
+  if (options['reference-output']) {
+    throw new Error('Параметр --reference-output больше не используется: места сохраняются в --output');
+  }
 
   const archiveRoot = path.resolve(options['archive-root']);
   const archiveIndex = JSON.parse(fs.readFileSync(options['archive-index'], 'utf8'));
@@ -431,7 +438,11 @@ function buildPhotoGeodata(options) {
     includeSingleKmlDates: options.includeSingleKmlDates
   });
   const existingLocations = options.existing && fs.existsSync(options.existing)
-    ? readPhotoLocations(options.existing)
+    ? readLocationData(
+      options.existing,
+      path.join(path.dirname(options.existing), 'location_reference.json'),
+      { migrate: false }
+    )
     : new Map();
   const photoLocations = new Map();
   let matchedPhotos = 0;
@@ -453,19 +464,28 @@ function buildPhotoGeodata(options) {
   }
 
   const generatedAt = new Date().toISOString();
-  Object.defineProperty(photoLocations, 'documentMetadata', {
-    enumerable: false,
-    value: {
-      generatedAt,
-      sources: [
-        'EXIF фотографий (читается приложением при индексации)',
-        'home-office: life/resources/leisure/travel-locations.yaml',
-        `Organic Maps: ${path.basename(options['organic-maps'])}`
-      ]
-    }
+  const generatedReference = locationReference(homeOfficeLocations, organicPlaces, generatedAt);
+  const preservedManualPlaces = (existingLocations.documentMetadata?.places || [])
+    .filter((place) => place.source === 'manual');
+  const consolidated = consolidateLocationData(photoLocations, [
+    ...generatedReference.places,
+    ...preservedManualPlaces
+  ]);
+  setLocationDocumentMetadata(photoLocations, {
+    generatedAt,
+    sources: [
+      'EXIF фотографий (читается приложением при индексации)',
+      'home-office: life/resources/leisure/travel-locations.yaml',
+      `Organic Maps: ${path.basename(options['organic-maps'])}`
+    ],
+    places: consolidated.places
   });
-  const locationDocument = serializePhotoLocations(photoLocations);
-  const referenceDocument = locationReference(homeOfficeLocations, organicPlaces, generatedAt);
+  const locationDocument = serializeLocationData(photoLocations);
+  const referenceDocument = {
+    version: 1,
+    generatedAt,
+    places: consolidated.places
+  };
   const report = {
     generatedAt,
     archive: {
@@ -488,13 +508,13 @@ function buildPhotoGeodata(options) {
       ambiguousDates: Object.keys(matched.ambiguous).length
     },
     ambiguous: matched.ambiguous,
-    referencePlaces: referenceDocument.places.length
+    referencePlaces: referenceDocument.places.length,
+    duplicateReferencePlacesRemoved: consolidated.removedPlaceCount
   };
 
   if (!options.dryRun) {
     if (!options.output) throw new Error('Не указан параметр --output');
     atomicWriteJson(options.output, locationDocument);
-    if (options['reference-output']) atomicWriteJson(options['reference-output'], referenceDocument);
     if (options.report) atomicWriteJson(options.report, report);
   }
   return { locationDocument, referenceDocument, report };

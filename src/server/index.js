@@ -14,15 +14,17 @@ const {
   PHOTO_ID_RE,
   normalizeCoordinates,
   normalizeLocationKey,
-  normalizeLocationRecord,
-  readPhotoLocations,
-  writePhotoLocations
+  normalizeLocationRecord
 } = require('./photo-locations');
 const {
-  normalizeReferencePlace,
-  readLocationReference,
-  writeLocationReference
+  normalizeReferencePlace
 } = require('./location-reference');
+const {
+  locationReferenceDocument,
+  readLocationData,
+  replaceLocationReferencePlaces,
+  writeLocationData
+} = require('./location-storage');
 const {
   conversionFailureMessage,
   displayConversionPath,
@@ -50,7 +52,7 @@ let INDEX_CACHE_FILE = path.join(STATE_ROOT, 'photo-index.json');
 let PHOTO_SELECTIONS_FILE = path.join(STATE_ROOT, 'daily_photo_selections.json');
 let HIGHLIGHT_SELECTIONS_FILE = path.join(STATE_ROOT, 'period_photo_selections.json');
 let PHOTO_LOCATIONS_FILE = path.join(STATE_ROOT, 'photo_locations.json');
-let LOCATION_REFERENCE_FILE = path.join(STATE_ROOT, 'location_reference.json');
+let LEGACY_LOCATION_REFERENCE_FILE = path.join(STATE_ROOT, 'location_reference.json');
 const SERVER_VERSION = String(Math.trunc(fs.statSync(__filename).mtimeMs / 1000));
 const PORT = Number(process.env.PORT || 4173);
 const IMAGE_RE = /\.(?:jpe?g|png|webp|gif|avif)$/i;
@@ -124,7 +126,7 @@ function configurePaths({
     sourceMode === 'folder' ? CONTENT_ROOT : STATE_ROOT,
     'photo_locations.json'
   );
-  LOCATION_REFERENCE_FILE = path.join(
+  LEGACY_LOCATION_REFERENCE_FILE = path.join(
     sourceMode === 'folder' ? CONTENT_ROOT : STATE_ROOT,
     'location_reference.json'
   );
@@ -1033,7 +1035,7 @@ function updateStoredPhotoLocation(photo, value) {
   for (const key of affectedKeys) manualPhotoLocations.delete(key);
   if (value) manualPhotoLocations.set(locationKey, value);
   try {
-    writePhotoLocations(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
+    writeLocationData(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
   } catch (error) {
     for (const key of affectedKeys) manualPhotoLocations.delete(key);
     for (const [key, existed, value] of previousLocations) {
@@ -1059,30 +1061,23 @@ function hidePhotoLocation(photo) {
 }
 
 function deleteLocationReference(placeId) {
-  const currentReference = readLocationReference(LOCATION_REFERENCE_FILE);
+  const currentReference = locationReferenceDocument(manualPhotoLocations);
   const place = currentReference.places.find((candidate) => candidate.id === placeId);
   if (!place) return null;
 
   const linkedEntries = [...manualPhotoLocations.entries()]
     .filter(([, location]) => location?.referenceId === placeId);
   const linkedPhotos = photos.filter((photo) => photo.locationReferenceId === placeId);
-  const nextReference = {
-    ...currentReference,
-    generatedAt: new Date().toISOString(),
-    places: currentReference.places.filter((candidate) => candidate.id !== placeId)
-  };
-
-  writeLocationReference(LOCATION_REFERENCE_FILE, nextReference);
-  for (const [key] of linkedEntries) manualPhotoLocations.set(key, { hidden: true });
+  const previousLocations = clonePhotoLocations(manualPhotoLocations);
+  for (const [key] of linkedEntries) manualPhotoLocations.delete(key);
+  replaceLocationReferencePlaces(
+    manualPhotoLocations,
+    currentReference.places.filter((candidate) => candidate.id !== placeId)
+  );
   try {
-    if (linkedEntries.length) writePhotoLocations(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
+    writeLocationData(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
   } catch (error) {
-    for (const [key, location] of linkedEntries) manualPhotoLocations.set(key, location);
-    try {
-      writeLocationReference(LOCATION_REFERENCE_FILE, currentReference);
-    } catch (rollbackError) {
-      console.error(`Не удалось восстановить справочник мест: ${rollbackError.message}`);
-    }
+    manualPhotoLocations = previousLocations;
     throw error;
   }
 
@@ -1283,7 +1278,10 @@ async function switchContentSource({ mode = 'folder', roots = [], convertImages 
     });
     shouldConvertImages = mode === 'folder' && Boolean(convertImages);
     highlightSelections = readHighlightSelections();
-    manualPhotoLocations = readPhotoLocations(PHOTO_LOCATIONS_FILE);
+    manualPhotoLocations = readLocationData(
+      PHOTO_LOCATIONS_FILE,
+      LEGACY_LOCATION_REFERENCE_FILE
+    );
     blurDates = readBlurDates();
     const previousSignature = archiveSignature(photos, highlights, diary);
     let conversionWarning = '';
@@ -1378,7 +1376,8 @@ function clonePhotoLocations(locations) {
       writable: true,
       value: {
         ...locations.documentMetadata,
-        sources: [...(locations.documentMetadata.sources || [])]
+        sources: [...(locations.documentMetadata.sources || [])],
+        places: structuredClone(locations.documentMetadata.places || [])
       }
     });
   }
@@ -1421,7 +1420,7 @@ function restoreArchiveDateState(snapshot) {
 function persistArchiveDateState() {
   writePhotoSelections();
   writeHighlightSelections();
-  writePhotoLocations(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
+  writeLocationData(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
   writeBlurDates();
 }
 
@@ -1693,7 +1692,7 @@ function handleRequest(request, response) {
   }
 
   if (requestUrl.pathname === '/api/location-reference' && request.method === 'GET') {
-    sendJson(response, 200, readLocationReference(LOCATION_REFERENCE_FILE));
+    sendJson(response, 200, locationReferenceDocument(manualPhotoLocations));
     return;
   }
 
@@ -1727,13 +1726,22 @@ function handleRequest(request, response) {
         return;
       }
       try {
-        const current = readLocationReference(LOCATION_REFERENCE_FILE);
-        writeLocationReference(LOCATION_REFERENCE_FILE, {
-          ...current,
-          generatedAt: new Date().toISOString(),
-          places: [...current.places, place]
-        });
-        sendJson(response, 201, place);
+        const previousLocations = clonePhotoLocations(manualPhotoLocations);
+        const current = locationReferenceDocument(manualPhotoLocations);
+        replaceLocationReferencePlaces(
+          manualPhotoLocations,
+          [...current.places, place]
+        );
+        try {
+          writeLocationData(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
+        } catch (error) {
+          manualPhotoLocations = previousLocations;
+          throw error;
+        }
+        const storedPlace = manualPhotoLocations.documentMetadata.places.find((candidate) => (
+          candidate.latitude === place.latitude && candidate.longitude === place.longitude
+        )) || place;
+        sendJson(response, 201, storedPlace);
       } catch (error) {
         console.error(`Не удалось сохранить место: ${error.message}`);
         sendJson(response, 500, { error: 'Не удалось сохранить место' });
@@ -2140,7 +2148,10 @@ async function startPhotoDayServer(options = {}) {
   fs.mkdirSync(STATE_ROOT, { recursive: true });
 
   highlightSelections = readHighlightSelections();
-  manualPhotoLocations = readPhotoLocations(PHOTO_LOCATIONS_FILE);
+  manualPhotoLocations = readLocationData(
+    PHOTO_LOCATIONS_FILE,
+    LEGACY_LOCATION_REFERENCE_FILE
+  );
   blurDates = readBlurDates();
   photoSelections = readPhotoSelections();
   hasLoadedIndexCache = false;

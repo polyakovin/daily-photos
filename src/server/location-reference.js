@@ -19,7 +19,7 @@ function optionalText(value, maximumLength = 240) {
   return text ? text.slice(0, maximumLength) : null;
 }
 
-function normalizeReferencePlace(value) {
+function normalizeReferencePlaceFields(value) {
   const coordinates = normalizeCoordinates(value);
   const id = optionalText(value?.id, 128);
   const name = optionalText(value?.name);
@@ -45,6 +45,20 @@ function normalizeReferencePlace(value) {
   if (collection) result.collection = collection;
   if (Number.isInteger(mediaCount) && mediaCount >= 0) result.mediaCount = mediaCount;
   if (visitDates.length) result.visitDates = visitDates;
+  return result;
+}
+
+function normalizeReferencePlace(value) {
+  const result = normalizeReferencePlaceFields(value);
+  if (!result) return null;
+  const mergedPlaces = (Array.isArray(value?.mergedPlaces) ? value.mergedPlaces : [])
+    .map(normalizeReferencePlaceFields)
+    .filter((place) => place && place.id !== result.id)
+    .filter((place, index, places) => (
+      places.findIndex((candidate) => candidate.id === place.id) === index
+    ))
+    .slice(0, 500);
+  if (mergedPlaces.length) result.mergedPlaces = mergedPlaces;
   return result;
 }
 
