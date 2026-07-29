@@ -78,7 +78,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
-  assert.match(appHtml, /id="aboutAuthorName">Игорь Поляков/);
+  assert.match(appHtml, /class="about-author-byline"[\s\S]*?id="aboutAuthorName">Игорь Поляков/);
+  assert.doesNotMatch(appHtml, /about-author-monogram/);
+  assert.doesNotMatch(appHtml, /Создаёт цифровые продукты/);
   assert.doesNotMatch(appHtml, /class="app-author"/);
 
   const appInfoResponse = await fetch(`${server.url}/api/app-info`);
