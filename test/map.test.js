@@ -116,7 +116,7 @@ test('map replaces a selected reference marker with the linked photo marker', ()
   );
 });
 
-test('place suggestions rank recent and popular photo locations', () => {
+test('place suggestions use selection history for recent and photo counts for popular', () => {
   const places = [{
     id: 'popular',
     name: 'Популярное место',
@@ -168,7 +168,12 @@ test('place suggestions rank recent and popular photo locations', () => {
     longitude: 139.6503
   }];
 
-  const suggestions = referencePlaceSuggestions(places, photos, 2);
+  const suggestions = referencePlaceSuggestions(places, photos, 2, [
+    'empty',
+    'popular',
+    'missing',
+    'recent'
+  ]);
   assert.deepEqual(
     suggestions.all.map(({ place, photoCount, latestDate }) => ({
       id: place.id,
@@ -191,11 +196,11 @@ test('place suggestions rank recent and popular photo locations', () => {
   );
   assert.deepEqual(
     suggestions.recent.map(({ place }) => place.id),
-    ['recent', 'popular']
+    ['empty', 'popular']
   );
   assert.deepEqual(
-    suggestions.popular.map(({ place }) => place.id),
-    ['popular', 'recent']
+    suggestions.popular.map(({ place, photoCount }) => [place.id, photoCount]),
+    [['popular', 3], ['recent', 2]]
   );
 });
 

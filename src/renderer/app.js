@@ -9,6 +9,8 @@ const MONTHS_GENITIVE = [
 const PRESENTATION_MODE_STORAGE_KEY = 'photo-day:presentation-mode';
 const BLUR_DATES_STORAGE_KEY = 'photo-day:presentation-blur-dates';
 const LIFE_BIRTH_DATE_STORAGE_KEY = 'photo-day:birth-date';
+const RECENT_PLACE_STORAGE_KEY = 'photo-day:recent-places';
+const RECENT_PLACE_LIMIT = 20;
 const DATE_KEY_PATTERN = /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
 const { suggestCalendarImportDate } = window.PhotoDayImportDate;
@@ -79,6 +81,7 @@ const mapPlacePickerDialog = document.querySelector('#mapPlacePickerDialog');
 const mapPlacePickerPhoto = document.querySelector('#mapPlacePickerPhoto');
 const mapPlacePickerSearch = document.querySelector('#mapPlacePickerSearch');
 const mapPlacePickerStatus = document.querySelector('#mapPlacePickerStatus');
+const mapPlaceSuggestionsToggle = document.querySelector('#mapPlaceSuggestionsToggle');
 const mapPlacePickerGrid = document.querySelector('#mapPlacePickerGrid');
 const lifeCanvas = document.querySelector('#lifeCanvas');
 const lifeCanvasWrap = document.querySelector('#lifeCanvasWrap');
@@ -145,6 +148,7 @@ const viewerLocationMapElement = document.querySelector('#viewerLocationMap');
 const viewerLocationSearch = document.querySelector('#viewerLocationSearch');
 const viewerLocationSearchInput = document.querySelector('#viewerLocationSearchInput');
 const viewerLocationSearchResults = document.querySelector('#viewerLocationSearchResults');
+const viewerLocationSuggestionsToggle = document.querySelector('#viewerLocationSuggestionsToggle');
 const viewerLocationTitle = document.querySelector('#viewerLocationTitle');
 const viewerLocationStatus = document.querySelector('#viewerLocationStatus');
 const viewerLocationRemove = document.querySelector('#viewerLocationRemove');
@@ -244,6 +248,7 @@ let mapPhotoPickerSaving = false;
 let mapPlacePickerActivePhoto = null;
 let mapPlacePickerSaving = false;
 let mapPlacePickerContext = 'map';
+let mapPlacePickerSuggestionsVisible = false;
 let mapLocationSearch = null;
 let viewerLocationMap = null;
 let viewerLocationDraft = null;
@@ -267,6 +272,7 @@ let calendarFocus = 'month';
 let blurDates = readStoredBlurDates();
 let presentationMode = readStoredPresentationMode();
 let birthDate = readStoredBirthDate();
+let recentPlaceIds = readStoredRecentPlaceIds();
 let blurStatusTimer = null;
 let viewerChoiceStatusTimer = null;
 let viewerHighlightStatusTimer = null;
@@ -295,6 +301,31 @@ function readStoredNavigationState() {
     return readViewState(window.localStorage);
   } catch {
     return normalizeViewState(null);
+  }
+}
+
+function readStoredRecentPlaceIds() {
+  try {
+    const values = JSON.parse(window.localStorage.getItem(RECENT_PLACE_STORAGE_KEY) || '[]');
+    return [...new Set(
+      (Array.isArray(values) ? values : [])
+        .filter((value) => typeof value === 'string' && value.trim())
+    )].slice(0, RECENT_PLACE_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecentPlace(placeId) {
+  if (typeof placeId !== 'string' || !placeId.trim()) return;
+  recentPlaceIds = [
+    placeId,
+    ...recentPlaceIds.filter((candidate) => candidate !== placeId)
+  ].slice(0, RECENT_PLACE_LIMIT);
+  try {
+    window.localStorage.setItem(RECENT_PLACE_STORAGE_KEY, JSON.stringify(recentPlaceIds));
+  } catch {
+    // История выбора остаётся доступна до перезагрузки.
   }
 }
 
@@ -1451,6 +1482,7 @@ function setupLocationSearch({
   form,
   input,
   resultsElement,
+  suggestionsButton,
   getMap,
   onSelect,
   getSuggestionSections
@@ -1458,13 +1490,21 @@ function setupLocationSearch({
   let requestController = null;
   const submitButton = form.querySelector(':scope > button[type="submit"]');
 
+  function hideResults() {
+    resultsElement.hidden = true;
+    resultsElement.dataset.content = '';
+    suggestionsButton?.setAttribute('aria-expanded', 'false');
+  }
+
   function showStatus(message, isError = false) {
     const status = document.createElement('span');
     status.textContent = message;
     status.classList.toggle('is-error', isError);
     status.setAttribute('role', isError ? 'alert' : 'status');
     resultsElement.replaceChildren(status);
+    resultsElement.dataset.content = 'search';
     resultsElement.hidden = false;
+    suggestionsButton?.setAttribute('aria-expanded', 'false');
   }
 
   function choose(result) {
@@ -1474,7 +1514,7 @@ function setupLocationSearch({
     map?.setCenter(location, locationSearchZoom(result));
     map?.setSelection(location);
     input.value = result.displayName || `${location.latitude}, ${location.longitude}`;
-    resultsElement.hidden = true;
+    hideResults();
     onSelect?.(location, result);
   }
 
@@ -1499,7 +1539,9 @@ function setupLocationSearch({
     }
     const buttons = results.map(resultButton);
     resultsElement.replaceChildren(...buttons);
+    resultsElement.dataset.content = 'search';
     resultsElement.hidden = false;
+    suggestionsButton?.setAttribute('aria-expanded', 'false');
   }
 
   function showSuggestions() {
@@ -1512,8 +1554,18 @@ function setupLocationSearch({
       return [heading, ...section.results.map(resultButton)];
     });
     resultsElement.replaceChildren(...nodes);
+    resultsElement.dataset.content = 'suggestions';
     resultsElement.hidden = nodes.length === 0;
+    suggestionsButton?.setAttribute('aria-expanded', String(nodes.length > 0));
   }
+
+  suggestionsButton?.addEventListener('click', () => {
+    if (!resultsElement.hidden && resultsElement.dataset.content === 'suggestions') {
+      hideResults();
+      return;
+    }
+    showSuggestions();
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1540,21 +1592,17 @@ function setupLocationSearch({
   input.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     requestController?.abort();
-    resultsElement.hidden = true;
+    hideResults();
     input.blur();
   });
-  input.addEventListener('focus', () => {
-    if (!input.value.trim()) showSuggestions();
-  });
   input.addEventListener('input', () => {
-    if (!input.value.trim()) showSuggestions();
-    else resultsElement.hidden = true;
+    hideResults();
   });
 
   return {
     clear() {
       requestController?.abort();
-      resultsElement.hidden = true;
+      hideResults();
     },
     showSuggestions
   };
@@ -1600,6 +1648,7 @@ async function persistPhotoLocation(photo, location) {
   });
   const result = await response.json().catch(() => null);
   if (!response.ok) throw new Error(result?.error || 'Не удалось сохранить место');
+  if (normalizedLocation?.referenceId) rememberRecentPlace(normalizedLocation.referenceId);
   return updatePhotoLocationState(result);
 }
 
@@ -2137,8 +2186,13 @@ async function linkPhotoToMapPlace(photo, place) {
   }
 }
 
-function placeSuggestionSections(limit = 6, { includeAll = false } = {}) {
-  const suggestions = referencePlaceSuggestions(locationReferencePlaces, photos, limit);
+function placeSuggestionSections(limit = 6) {
+  const suggestions = referencePlaceSuggestions(
+    locationReferencePlaces,
+    photos,
+    limit,
+    recentPlaceIds
+  );
   return [{
     title: 'Недавние',
     type: 'recent',
@@ -2147,11 +2201,7 @@ function placeSuggestionSections(limit = 6, { includeAll = false } = {}) {
     title: 'Популярные',
     type: 'popular',
     candidates: suggestions.popular
-  }, ...(includeAll ? [{
-    title: 'Все места',
-    type: 'all',
-    candidates: suggestions.all
-  }] : [])].filter(({ candidates }) => candidates.length);
+  }].filter(({ candidates }) => candidates.length);
 }
 
 function mapPlacePickerCandidates(query = '') {
@@ -2169,7 +2219,7 @@ function mapPlacePickerCandidates(query = '') {
     ));
 }
 
-function mapPlacePickerItem({ place, photoCount, latestDate }, type = 'all') {
+function mapPlacePickerItem({ place, photoCount }, type = 'all') {
   const button = document.createElement('button');
   const marker = document.createElement('i');
   const markerLabel = document.createElement('span');
@@ -2183,8 +2233,8 @@ function mapPlacePickerItem({ place, photoCount, latestDate }, type = 'all') {
   marker.replaceChildren(markerLabel);
   title.textContent = [place.name, place.country].filter(Boolean).join(' · ');
   const photoCountLabel = `${photoCount.toLocaleString('ru-RU')} ${pluralize(photoCount, ['фотография', 'фотографии', 'фотографий'])}`;
-  status.textContent = type === 'recent' && latestDate
-    ? `Последнее фото: ${formatDate(latestDate)} · ${photoCountLabel}`
+  status.textContent = type === 'recent'
+    ? `Недавно выбрано · ${photoCount ? photoCountLabel : 'без фотографий'}`
     : photoCount ? photoCountLabel : 'Без фотографий';
   copy.replaceChildren(title, status);
   button.replaceChildren(marker, copy);
@@ -2216,25 +2266,44 @@ function renderMapPlacePicker() {
       type: 'all',
       candidates: visibleCandidates
     }]
-    : placeSuggestionSections(6, { includeAll: true }).map((section) => ({
+    : mapPlacePickerSuggestionsVisible ? placeSuggestionSections(6).map((section) => ({
       ...section,
-      candidates: section.candidates.slice(0, section.type === 'all' ? 240 : 6)
-    }));
+      candidates: section.candidates.slice(0, 6)
+    })) : [];
+
+  mapPlaceSuggestionsToggle.disabled = !locationReferencePlaces.length || mapPlacePickerSaving;
+  mapPlaceSuggestionsToggle.setAttribute(
+    'aria-expanded',
+    String(!query && mapPlacePickerSuggestionsVisible)
+  );
+  mapPlaceSuggestionsToggle.textContent = !query && mapPlacePickerSuggestionsVisible
+    ? 'Скрыть подсказки'
+    : 'Недавние и популярные';
 
   if (query) {
     mapPlacePickerStatus.textContent = candidates.length > visibleCandidates.length
       ? `Показаны первые ${visibleCandidates.length.toLocaleString('ru-RU')} из ${candidates.length.toLocaleString('ru-RU')}. Уточните название в поиске.`
       : `${candidates.length.toLocaleString('ru-RU')} ${pluralize(candidates.length, ['место', 'места', 'мест'])}`;
-  } else {
+  } else if (mapPlacePickerSuggestionsVisible) {
     const recentCount = sections.find(({ type }) => type === 'recent')?.candidates.length || 0;
     const popularCount = sections.find(({ type }) => type === 'popular')?.candidates.length || 0;
-    mapPlacePickerStatus.textContent = `${recentCount.toLocaleString('ru-RU')} недавних · ${popularCount.toLocaleString('ru-RU')} популярных · ${candidates.length.toLocaleString('ru-RU')} всего`;
+    mapPlacePickerStatus.textContent = `${recentCount.toLocaleString('ru-RU')} недавних · ${popularCount.toLocaleString('ru-RU')} популярных`;
+  } else {
+    mapPlacePickerStatus.textContent = locationReferencePlaces.length
+      ? `${locationReferencePlaces.length.toLocaleString('ru-RU')} ${pluralize(locationReferencePlaces.length, ['сохранённое место', 'сохранённых места', 'сохранённых мест'])}`
+      : 'Сохранённых мест пока нет';
   }
 
   if (!sections.some(({ candidates: sectionCandidates }) => sectionCandidates.length)) {
     const empty = document.createElement('p');
     empty.className = 'map-photo-picker-empty';
-    empty.textContent = query ? 'Сохранённые места не найдены' : 'Сохранённых мест пока нет';
+    empty.textContent = query
+      ? 'Сохранённые места не найдены'
+      : locationReferencePlaces.length
+        ? mapPlacePickerSuggestionsVisible
+          ? 'История выбора пока пуста, а фотографий у сохранённых мест нет'
+          : 'Начните вводить название или откройте подсказки'
+        : 'Сохранённых мест пока нет';
     mapPlacePickerGrid.replaceChildren(empty);
     return;
   }
@@ -2246,6 +2315,7 @@ function openMapPlacePicker(photo = activeMapPhotos[activeMapPhotoIndex], contex
   mapPlacePickerActivePhoto = photo;
   mapPlacePickerSaving = false;
   mapPlacePickerContext = context;
+  mapPlacePickerSuggestionsVisible = false;
   mapPlacePickerSearch.value = '';
   mapPlacePickerPhoto.textContent = formatDate(photo.date);
   renderMapPlacePicker();
@@ -2258,6 +2328,8 @@ function closeMapPlacePicker() {
   mapPlacePickerActivePhoto = null;
   mapPlacePickerSaving = false;
   mapPlacePickerContext = 'map';
+  mapPlacePickerSuggestionsVisible = false;
+  mapPlaceSuggestionsToggle.setAttribute('aria-expanded', 'false');
   mapPlacePickerGrid.replaceChildren();
 }
 
@@ -2526,7 +2598,7 @@ function openViewerLocationEditor() {
       : photo.locationSource ? 'Автоматическая метка' : 'Метки нет';
   setViewerLocationDraft(location);
   viewerLocationSearchInput.value = '';
-  viewerLocationPlaceSearch?.showSuggestions();
+  viewerLocationPlaceSearch?.clear();
   requestAnimationFrame(() => {
     viewerLocationMap.setCenter(
       location || mainView || { latitude: 30, longitude: 20 },
@@ -4151,6 +4223,7 @@ viewerLocationPlaceSearch = setupLocationSearch({
   form: viewerLocationSearch,
   input: viewerLocationSearchInput,
   resultsElement: viewerLocationSearchResults,
+  suggestionsButton: viewerLocationSuggestionsToggle,
   getMap: () => {
     ensureViewerLocationMap();
     return viewerLocationMap;
@@ -4158,13 +4231,13 @@ viewerLocationPlaceSearch = setupLocationSearch({
   onSelect: setViewerLocationDraft,
   getSuggestionSections: () => placeSuggestionSections(5).map(({ title, type, candidates }) => ({
     title,
-    results: candidates.map(({ place, photoCount, latestDate }) => ({
+    results: candidates.map(({ place, photoCount }) => ({
       ...place,
       referenceId: place.id,
       place: place.name,
       displayName: [place.name, place.country].filter(Boolean).join(' · '),
-      suggestionDetail: type === 'recent' && latestDate
-        ? `Последнее фото: ${formatDate(latestDate)}`
+      suggestionDetail: type === 'recent'
+        ? `Недавно выбрано · ${photoCount.toLocaleString('ru-RU')} ${pluralize(photoCount, ['фотография', 'фотографии', 'фотографий'])}`
         : `${photoCount.toLocaleString('ru-RU')} ${pluralize(photoCount, ['фотография', 'фотографии', 'фотографий'])}`
     }))
   }))
@@ -4205,7 +4278,14 @@ mapPhotoPickerDialog.addEventListener('click', (event) => {
   if (event.target === mapPhotoPickerDialog) closeMapPhotoPicker();
 });
 document.querySelector('#mapPlacePickerClose').addEventListener('click', closeMapPlacePicker);
-mapPlacePickerSearch.addEventListener('input', renderMapPlacePicker);
+mapPlacePickerSearch.addEventListener('input', () => {
+  if (mapPlacePickerSearch.value.trim()) mapPlacePickerSuggestionsVisible = false;
+  renderMapPlacePicker();
+});
+mapPlaceSuggestionsToggle.addEventListener('click', () => {
+  mapPlacePickerSuggestionsVisible = !mapPlacePickerSuggestionsVisible;
+  renderMapPlacePicker();
+});
 mapPlacePickerDialog.addEventListener('cancel', (event) => {
   event.preventDefault();
   closeMapPlacePicker();

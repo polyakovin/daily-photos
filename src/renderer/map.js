@@ -91,7 +91,7 @@
       .filter((place) => linkedReferenceIds.has(place.id));
   }
 
-  function referencePlaceSuggestions(places, photos, limit = 6) {
+  function referencePlaceSuggestions(places, photos, limit = 6, recentPlaceIds = []) {
     const stats = (Array.isArray(places) ? places : []).map((place) => ({
       place,
       photoCount: 0,
@@ -127,18 +127,21 @@
       String(a.place?.name || '').localeCompare(String(b.place?.name || ''), 'ru')
       || String(a.place?.country || '').localeCompare(String(b.place?.country || ''), 'ru')
     );
-    const used = stats.filter(({ photoCount }) => photoCount > 0);
     const safeLimit = Math.max(0, Math.trunc(Number(limit) || 0));
+    const recent = [];
+    const recentIds = new Set();
+    for (const placeId of Array.isArray(recentPlaceIds) ? recentPlaceIds : []) {
+      if (recentIds.has(placeId)) continue;
+      recentIds.add(placeId);
+      const stat = statsById.get(placeId);
+      if (stat) recent.push(stat);
+      if (recent.length >= safeLimit) break;
+    }
     return {
       all: [...stats].sort(compareNames),
-      recent: [...used].sort((a, b) => (
-        b.latestDate.localeCompare(a.latestDate)
-        || b.photoCount - a.photoCount
-        || compareNames(a, b)
-      )).slice(0, safeLimit),
-      popular: [...used].sort((a, b) => (
+      recent,
+      popular: stats.filter(({ photoCount }) => photoCount > 0).sort((a, b) => (
         b.photoCount - a.photoCount
-        || b.latestDate.localeCompare(a.latestDate)
         || compareNames(a, b)
       )).slice(0, safeLimit)
     };

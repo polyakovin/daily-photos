@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Фото дня — календарь</title>
     <script src="/theme.js?v=1"></script>
-    <link rel="stylesheet" href="/styles.css?v=96" />
+    <link rel="stylesheet" href="/styles.css?v=97" />
   </head>
   <body>
     <main class="shell">
@@ -544,7 +544,16 @@
           <span>Поиск по названию или стране</span>
           <input id="mapPlacePickerSearch" type="search" placeholder="Тунис, Италия, Канди…" autocomplete="off" />
         </label>
-        <p class="map-photo-picker-status" id="mapPlacePickerStatus" aria-live="polite"></p>
+        <div class="map-place-picker-toolbar">
+          <p class="map-photo-picker-status" id="mapPlacePickerStatus" aria-live="polite"></p>
+          <button
+            class="map-place-suggestions-toggle"
+            id="mapPlaceSuggestionsToggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="mapPlacePickerGrid"
+          >Недавние и популярные</button>
+        </div>
         <div class="map-place-picker-grid" id="mapPlacePickerGrid"></div>
       </div>
     </dialog>
@@ -574,6 +583,14 @@
               maxlength="200"
             />
             <button type="submit">Найти</button>
+            <button
+              class="map-search-suggestions-toggle"
+              id="viewerLocationSuggestionsToggle"
+              type="button"
+              aria-label="Показать недавние и популярные места"
+              aria-expanded="false"
+              aria-controls="viewerLocationSearchResults"
+            >Места</button>
             <div class="map-search-results" id="viewerLocationSearchResults" hidden></div>
           </form>
           <div class="viewer-location-map" id="viewerLocationMap" role="application" aria-label="Выбор места фотографии"></div>
@@ -679,10 +696,10 @@
     </dialog>
 
     <script src="/life-range.js?v=1" defer></script>
-    <script src="/map.js?v=3" defer></script>
+    <script src="/map.js?v=4" defer></script>
     <script src="/photo-import-date.js?v=1" defer></script>
     <script src="/date-picker.js?v=7" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=83" defer></script>
+    <script src="/app.js?v=84" defer></script>
   </body>
 </html>
