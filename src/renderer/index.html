@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Фото дня — календарь</title>
     <script src="/theme.js?v=1"></script>
-    <link rel="stylesheet" href="/styles.css?v=89" />
+    <link rel="stylesheet" href="/styles.css?v=90" />
   </head>
   <body>
     <main class="shell">
@@ -34,6 +34,13 @@
                 <circle cx="12" cy="12" r="3.5"></circle>
                 <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
               </g>
+            </svg>
+          </button>
+          <button class="info-button" id="aboutButton" type="button" aria-label="О приложении" aria-haspopup="dialog" aria-controls="aboutDialog" title="О приложении">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"></circle>
+              <path d="M12 10.5v6"></path>
+              <circle cx="12" cy="7.5" r=".7"></circle>
             </svg>
           </button>
           <button class="presentation-button" id="presentationButton" type="button" aria-pressed="false">
@@ -213,15 +220,24 @@
             </label>
             <div class="life-birth-date">
               <label for="lifeBirthDate">Дата рождения</label>
-              <input
-                id="lifeBirthDate"
-                type="text"
-                inputmode="numeric"
-                autocomplete="bday"
-                maxlength="10"
-                placeholder="ДД.ММ.ГГГГ"
-                aria-describedby="lifeBirthDateStatus"
-              />
+              <div class="date-picker">
+                <input
+                  id="lifeBirthDate"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="bday"
+                  placeholder="ДД.ММ.ГГГГ"
+                  min="1900-01-01"
+                  aria-describedby="lifeBirthDateStatus"
+                  data-date-picker
+                  data-picker-label="Дата рождения"
+                />
+                <button class="date-picker-toggle" type="button" aria-label="Открыть календарь даты рождения">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 3v3M17 3v3M4.5 9h15M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+                  </svg>
+                </button>
+              </div>
               <small class="life-birth-date-status" id="lifeBirthDateStatus" aria-live="polite"></small>
             </div>
             <div class="life-summary" id="lifeSummary" aria-label="Прожито"></div>
@@ -275,17 +291,6 @@
         </div>
       </section>
 
-      <footer class="app-author" aria-label="Об авторе">
-        <p>
-          <span>Автор</span>
-          <a class="app-author-name" href="https://polyakovin.ru" target="_blank" rel="noreferrer">Игорь Поляков</a>
-        </p>
-        <nav class="app-author-links" aria-label="Ссылки автора">
-          <a href="https://t.me/polyakovin" target="_blank" rel="noreferrer">Telegram</a>
-          <a href="https://github.com/polyakovin/daily-photos" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="https://boosty.to/polyakovin" target="_blank" rel="noreferrer">Boosty</a>
-        </nav>
-      </footer>
     </main>
 
     <aside class="background-operation-tooltip" id="backgroundOperationTooltip" role="status" aria-live="polite" aria-atomic="false" hidden>
@@ -316,6 +321,85 @@
       </div>
     </div>
 
+    <dialog class="about-dialog" id="aboutDialog" aria-labelledby="aboutTitle">
+      <article class="about-card" id="aboutCard">
+        <button class="about-close" id="aboutClose" type="button" aria-label="Закрыть">×</button>
+        <header class="about-heading">
+          <span class="about-mark" aria-hidden="true">
+            <svg viewBox="0 0 48 48">
+              <rect x="6" y="12" width="36" height="28" rx="8"></rect>
+              <path d="M16 12l3-5h10l3 5"></path>
+              <circle cx="24" cy="26" r="8"></circle>
+              <circle cx="36" cy="18" r="1.5"></circle>
+            </svg>
+          </span>
+          <div>
+            <p class="about-kicker">О приложении</p>
+            <h1 id="aboutTitle">Фото дня</h1>
+            <p class="about-lead">Личный фотоархив, в котором каждый день остаётся на своём месте.</p>
+          </div>
+        </header>
+
+        <dl class="about-release" aria-label="Версия приложения">
+          <div>
+            <dt>Версия</dt>
+            <dd id="aboutVersion">—</dd>
+          </div>
+          <div>
+            <dt>Сборка</dt>
+            <dd id="aboutBuildDate">—</dd>
+          </div>
+          <div>
+            <dt>Среда</dt>
+            <dd id="aboutEnvironment">—</dd>
+          </div>
+        </dl>
+
+        <section class="about-section" aria-labelledby="aboutDataTitle">
+          <div class="about-section-heading">
+            <div>
+              <p class="about-kicker">Локальная диагностика</p>
+              <h2 id="aboutDataTitle">Текущие данные</h2>
+            </div>
+            <span id="aboutStatus" role="status" aria-live="polite">Обновляем…</span>
+          </div>
+          <div class="about-stats">
+            <div><strong id="aboutPhotoCount">—</strong><span>снимков</span></div>
+            <div><strong id="aboutDayCount">—</strong><span>дней с фото</span></div>
+            <div><strong id="aboutDiaryCount">—</strong><span>записей</span></div>
+            <div><strong id="aboutLocatedCount">—</strong><span>с геометкой</span></div>
+          </div>
+          <dl class="about-details">
+            <div><dt>Источник</dt><dd id="aboutDataSource">—</dd></div>
+            <div><dt>Период</dt><dd id="aboutDateRange">—</dd></div>
+            <div><dt>Места</dt><dd id="aboutPlaces">—</dd></div>
+            <div><dt>Индекс</dt><dd id="aboutIndex">—</dd></div>
+            <div><dt>Компоненты</dt><dd id="aboutRuntime">—</dd></div>
+          </dl>
+        </section>
+
+        <section class="about-author" aria-labelledby="aboutAuthorName">
+          <span class="about-author-monogram" aria-hidden="true">ИП</span>
+          <div class="about-author-copy">
+            <p class="about-kicker">Автор и разработчик</p>
+            <h2 id="aboutAuthorName">Игорь Поляков</h2>
+            <p>Создаёт цифровые продукты о памяти, внимании и личных данных.</p>
+          </div>
+          <nav class="about-author-links" aria-label="Ссылки автора">
+            <a href="https://polyakovin.ru" target="_blank" rel="noreferrer">Сайт</a>
+            <a href="https://t.me/polyakovin" target="_blank" rel="noreferrer">Telegram</a>
+            <a href="https://github.com/polyakovin/daily-photos" target="_blank" rel="noreferrer">GitHub</a>
+            <a href="https://boosty.to/polyakovin" target="_blank" rel="noreferrer">Boosty</a>
+          </nav>
+        </section>
+
+        <footer class="about-footer">
+          <span>Диагностика формируется локально и не отправляется наружу.</span>
+          <a href="https://github.com/polyakovin/daily-photos/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT License</a>
+        </footer>
+      </article>
+    </dialog>
+
     <dialog class="photo-import-dialog" id="photoImportDialog" aria-labelledby="photoImportTitle">
       <form class="photo-import-card" id="photoImportForm">
         <button class="photo-import-close" id="photoImportClose" type="button" aria-label="Отменить добавление">×</button>
@@ -323,11 +407,29 @@
         <p class="photo-import-kicker">Новые воспоминания</p>
         <h1 id="photoImportTitle">Добавить фотографии</h1>
         <p class="photo-import-summary" id="photoImportSummary"></p>
-        <label class="photo-import-date-field" for="photoImportDate">
-          <span>Дата фотографии</span>
-          <input id="photoImportDate" type="date" required />
+        <div class="photo-import-date-field">
+          <label for="photoImportDate">Дата фотографии</label>
+          <div class="date-picker">
+            <input
+              id="photoImportDate"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              placeholder="ДД.ММ.ГГГГ"
+              min="1900-01-01"
+              aria-describedby="photoImportDateHint"
+              data-date-picker
+              data-picker-label="Дата фотографии"
+              required
+            />
+            <button class="date-picker-toggle" type="button" aria-label="Открыть календарь даты фотографии">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 3v3M17 3v3M4.5 9h15M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+              </svg>
+            </button>
+          </div>
           <small id="photoImportDateHint">Предлагаем дату съёмки из EXIF, если она указана</small>
-        </label>
+        </div>
         <p class="photo-import-error" id="photoImportError" role="alert" hidden></p>
         <div class="photo-import-actions">
           <button class="photo-import-cancel" id="photoImportCancel" type="button">Отмена</button>
@@ -508,7 +610,25 @@
             </div>
             <form class="viewer-date-form" id="viewerDateForm" hidden>
               <label class="sr-only" for="viewerDateInput">Новая дата фотографии</label>
-              <input id="viewerDateInput" type="date" min="1900-01-01" required />
+              <div class="date-picker">
+                <input
+                  id="viewerDateInput"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="ДД.ММ.ГГГГ"
+                  min="1900-01-01"
+                  aria-describedby="viewerDateStatus"
+                  data-date-picker
+                  data-picker-label="Новая дата фотографии"
+                  required
+                />
+                <button class="date-picker-toggle" type="button" aria-label="Открыть календарь новой даты фотографии">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M7 3v3M17 3v3M4.5 9h15M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+                  </svg>
+                </button>
+              </div>
               <button class="viewer-date-save" id="viewerDateSave" type="submit">Перенести</button>
               <button class="viewer-date-cancel" id="viewerDateCancel" type="button">Отмена</button>
               <span class="viewer-date-status" id="viewerDateStatus" aria-live="polite"></span>
@@ -558,7 +678,8 @@
     <script src="/life-range.js?v=1" defer></script>
     <script src="/map.js?v=2" defer></script>
     <script src="/photo-import-date.js?v=1" defer></script>
+    <script src="/date-picker.js?v=1" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=74" defer></script>
+    <script src="/app.js?v=76" defer></script>
   </body>
 </html>

@@ -104,6 +104,15 @@ function directoryExists(directory) {
   }
 }
 
+function applicationBuildDate() {
+  const target = app.isPackaged ? app.getAppPath() : path.join(app.getAppPath(), 'package.json');
+  try {
+    return fs.statSync(target).mtime.toISOString();
+  } catch {
+    return '';
+  }
+}
+
 function photoSearchRoots() {
   return automaticPhotoRoots({
     platform: process.platform,
@@ -490,6 +499,18 @@ async function startApplication() {
     indexedPreviewGenerator,
     mode: sourceMode,
     roots,
+    application: {
+      name: 'Фото дня',
+      version: app.getVersion(),
+      buildDate: applicationBuildDate(),
+      environment: 'desktop',
+      platform: process.platform,
+      runtime: {
+        electron: process.versions.electron,
+        chromium: process.versions.chrome,
+        node: process.versions.node
+      }
+    },
     port: 0
   });
   updateManager = createUpdateManager({

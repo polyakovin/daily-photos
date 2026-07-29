@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const packageInfo = require('../../package.json');
+const { createAppInfo } = require('./app-info');
 const { createPlaceSearch } = require('./geocoder');
 const { indexPhotoRoots } = require('./photo-indexer');
 const { readImportDateOverrides } = require('./import-date-overrides');
@@ -66,6 +68,7 @@ const UI_FILES = new Map([
   ['/life-range.js', 'life-range.js'],
   ['/map.js', 'map.js'],
   ['/photo-import-date.js', 'photo-import-date.js'],
+  ['/date-picker.js', 'date-picker.js'],
   ['/view-state.js', 'view-state.js'],
   ['/app.js', 'app.js']
 ]);
@@ -91,14 +94,35 @@ let manualPhotoLocations = new Map();
 let exifPhotoLocations = new Map();
 let photoLocationKeys = new Map();
 
+function defaultApplicationInfo() {
+  let buildDate = '';
+  try {
+    buildDate = fs.statSync(path.join(PROJECT_ROOT, 'package.json')).mtime.toISOString();
+  } catch {
+    // Версия всё равно остаётся доступной, даже если дата файла не читается.
+  }
+  return {
+    name: 'Фото дня',
+    version: packageInfo.version,
+    buildDate,
+    environment: 'web',
+    platform: process.platform,
+    runtime: { node: process.versions.node }
+  };
+}
+
+let applicationInfo = defaultApplicationInfo();
+
 function configurePaths({
   contentRoot,
   stateRoot,
   metadataIndex,
   indexedPreviewGenerator: nextIndexedPreviewGenerator,
   mode,
-  roots
+  roots,
+  application: nextApplicationInfo
 } = {}) {
+  applicationInfo = nextApplicationInfo || defaultApplicationInfo();
   if (contentRoot) CONTENT_ROOT = path.resolve(contentRoot);
   if (stateRoot) STATE_ROOT = path.resolve(stateRoot);
   if (typeof metadataIndex === 'boolean') shouldIndexMetadata = metadataIndex;
@@ -1620,6 +1644,27 @@ async function sendIndexedPreview(response, id, indexedPhoto) {
 
 function handleRequest(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+
+  if (requestUrl.pathname === '/api/app-info') {
+    let places = [];
+    try {
+      places = locationReferenceDocument(manualPhotoLocations).places;
+    } catch {
+      // Диагностика приложения не должна мешать открыть интерфейс.
+    }
+    sendJson(response, 200, createAppInfo({
+      application: applicationInfo,
+      photos,
+      diary,
+      places,
+      sourceMode,
+      sourceRoots,
+      metadataIndex: shouldIndexMetadata,
+      cachedIndex: hasLoadedIndexCache,
+      convertsImages: shouldConvertImages
+    }));
+    return;
+  }
 
   if (requestUrl.pathname === '/api/server-version') {
     response.writeHead(200, {
