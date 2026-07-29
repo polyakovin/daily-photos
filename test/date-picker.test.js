@@ -5,6 +5,7 @@ const {
   buildCalendarMonth,
   formatDateKey,
   moveCalendarViewByArrow,
+  normalizePhotoPreviews,
   normalizePhotoDates,
   parseDateText
 } = require('../src/renderer/date-picker');
@@ -51,4 +52,16 @@ test('keeps only valid occupied photo dates for calendar markers', () => {
     ['2024-06-15', '2024-06-16']
   );
   assert.deepEqual([...normalizePhotoDates(null)], []);
+});
+
+test('keeps valid date picker photo previews and their fallbacks', () => {
+  assert.deepEqual(
+    [...normalizePhotoPreviews(new Map([
+      ['2024-06-15', { src: '/preview.jpg', fallbackSrc: '/photo.jpg', count: 2 }],
+      ['invalid', { src: '/invalid.jpg' }],
+      ['2024-06-16', { src: '' }]
+    ]))],
+    [['2024-06-15', { src: '/preview.jpg', fallbackSrc: '/photo.jpg', count: 2 }]]
+  );
+  assert.deepEqual([...normalizePhotoPreviews(null)], []);
 });

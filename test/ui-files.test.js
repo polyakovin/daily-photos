@@ -52,6 +52,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.doesNotMatch(datePickerScript, /addCalendarDays/);
   assert.match(datePickerScript, /moveCalendarViewByArrow\(value, event\.key\)/);
   assert.match(datePickerScript, /setPhotoDates\(values\)/);
+  assert.match(datePickerScript, /setPhotoPreviews\(values\)/);
+  assert.match(datePickerScript, /date-picker-photo-tooltip/);
   assert.match(datePickerScript, /classList\.toggle\('has-photo', hasPhoto\)/);
   assert.match(datePickerScript, /new CustomEvent\('date-picker-select'/);
 
@@ -84,10 +86,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=95"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=96"/);
   assert.match(appHtml, /src="\/map\.js\?v=3"/);
-  assert.match(appHtml, /src="\/date-picker\.js\?v=6"/);
-  assert.match(appHtml, /src="\/app\.js\?v=82"/);
+  assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
+  assert.match(appHtml, /src="\/app\.js\?v=83"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -146,6 +148,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.date-picker-popover/);
   assert.match(styles, /\.date-picker-day\.is-selected/);
   assert.match(styles, /\.date-picker-day\.has-photo/);
+  assert.match(styles, /\.date-picker-photo-tooltip/);
 
   const appScriptResponse = await fetch(`${server.url}/app.js`);
   assert.equal(appScriptResponse.status, 200);
@@ -178,6 +181,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /onPhotoClick:\s*openMapFanPhoto/);
   assert.match(appScript, /changeViewerPhotoDate/);
   assert.match(appScript, /viewerDatePicker\.setPhotoDates\(byDate\.keys\(\)\)/);
+  assert.match(appScript, /viewerDatePicker\.setPhotoPreviews\(/);
   const viewerDateEditorBody = appScript.match(/function openViewerDateEditor\(\) \{([\s\S]*?)\n\}/)?.[1];
   assert.ok(viewerDateEditorBody);
   assert.match(viewerDateEditorBody, /viewerDatePicker\.open\(\)/);

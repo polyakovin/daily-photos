@@ -113,6 +113,25 @@
     return new Set([...values].filter((value) => dateFromKey(value)));
   }
 
+  function normalizePhotoPreviews(values) {
+    if (!values || typeof values[Symbol.iterator] !== 'function') return new Map();
+    const previews = new Map();
+    for (const entry of values) {
+      if (!Array.isArray(entry) || entry.length < 2 || !dateFromKey(entry[0])) continue;
+      const rawPreview = typeof entry[1] === 'string' ? { src: entry[1] } : entry[1];
+      const src = typeof rawPreview?.src === 'string' ? rawPreview.src.trim() : '';
+      if (!src) continue;
+      const fallbackSrc = typeof rawPreview.fallbackSrc === 'string'
+        ? rawPreview.fallbackSrc.trim()
+        : '';
+      const count = Number.isInteger(rawPreview.count) && rawPreview.count > 0
+        ? rawPreview.count
+        : 1;
+      previews.set(entry[0], { src, fallbackSrc, count });
+    }
+    return previews;
+  }
+
   function buildCalendarMonth(year, month) {
     const firstDay = new Date(year, month, 1);
     firstDay.setDate(firstDay.getDate() - ((firstDay.getDay() + 6) % 7));
@@ -152,6 +171,8 @@
       this._value = '';
       this.viewDate = '';
       this.photoDates = null;
+      this.photoPreviews = new Map();
+      this.photoPreviewDay = null;
       this.createPopover();
       this.bindEvents();
       this.setValue(input.dataset.value || input.value);
@@ -178,6 +199,10 @@
           <button class="date-picker-clear" type="button">Очистить</button>
         </div>
         <p class="date-picker-help" id="${this.id}-help">В сетке: ←/→ — месяцы · ↑/↓ — годы</p>
+        <div class="date-picker-photo-tooltip" role="tooltip" hidden>
+          <img alt="" />
+          <span></span>
+        </div>
       `;
       this.monthLabel = this.popover.querySelector('.date-picker-month');
       this.grid = this.popover.querySelector('.date-picker-grid');
@@ -186,6 +211,9 @@
       this.todayButton = this.popover.querySelector('.date-picker-today');
       this.clearButton = this.popover.querySelector('.date-picker-clear');
       this.help = this.popover.querySelector('.date-picker-help');
+      this.photoPreview = this.popover.querySelector('.date-picker-photo-tooltip');
+      this.photoPreviewImage = this.photoPreview.querySelector('img');
+      this.photoPreviewCaption = this.photoPreview.querySelector('span');
       this.grid.setAttribute('aria-describedby', `${this.id}-help`);
       this.clearButton.hidden = this.input.required;
 
@@ -238,6 +266,14 @@
       this.todayButton.addEventListener('click', () => this.select(dateKey(new Date())));
       this.clearButton.addEventListener('click', () => this.select(''));
       this.grid.addEventListener('keydown', (event) => this.handleGridKeydown(event));
+      this.photoPreviewImage.addEventListener('error', () => {
+        const fallbackSrc = this.photoPreviewImage.dataset.fallbackSrc;
+        if (fallbackSrc && this.photoPreviewImage.src !== new URL(fallbackSrc, window.location.href).href) {
+          this.photoPreviewImage.src = fallbackSrc;
+          return;
+        }
+        this.hidePhotoPreview();
+      });
       this.popover.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
           event.preventDefault();
@@ -253,7 +289,9 @@
         this.close();
       }, true);
       window.addEventListener('resize', () => {
-        if (this.isOpen()) this.positionPopover();
+        if (!this.isOpen()) return;
+        this.positionPopover();
+        if (this.photoPreviewDay) this.positionPhotoPreview(this.photoPreviewDay);
       });
     }
 
@@ -319,6 +357,11 @@
       if (this.isOpen()) this.render(this.viewDate);
     }
 
+    setPhotoPreviews(values) {
+      this.photoPreviews = normalizePhotoPreviews(values);
+      if (this.isOpen()) this.render(this.viewDate);
+    }
+
     validate() {
       this.commitInput();
       return this.input.checkValidity();
@@ -360,6 +403,7 @@
 
     close({ restoreFocus = false } = {}) {
       if (!this.isOpen()) return;
+      this.hidePhotoPreview();
       if (typeof this.popover.hidePopover === 'function') {
         try {
           this.popover.hidePopover();
@@ -392,7 +436,59 @@
       this.popover.style.top = `${Math.max(viewportPadding, top)}px`;
     }
 
+    positionPhotoPreview(button) {
+      const anchor = button.getBoundingClientRect();
+      const width = this.photoPreview.offsetWidth || 176;
+      const height = this.photoPreview.offsetHeight || 142;
+      const gap = 9;
+      const viewportPadding = 12;
+      const right = anchor.right + gap;
+      const left = anchor.left - width - gap;
+      let previewLeft;
+      let previewTop;
+
+      if (right + width <= window.innerWidth - viewportPadding) {
+        previewLeft = right;
+        previewTop = anchor.top + (anchor.height - height) / 2;
+      } else if (left >= viewportPadding) {
+        previewLeft = left;
+        previewTop = anchor.top + (anchor.height - height) / 2;
+      } else {
+        previewLeft = anchor.left + (anchor.width - width) / 2;
+        previewTop = anchor.top - height - gap;
+        if (previewTop < viewportPadding) previewTop = anchor.bottom + gap;
+      }
+
+      this.photoPreview.style.left = `${Math.max(
+        viewportPadding,
+        Math.min(previewLeft, window.innerWidth - width - viewportPadding)
+      )}px`;
+      this.photoPreview.style.top = `${Math.max(
+        viewportPadding,
+        Math.min(previewTop, window.innerHeight - height - viewportPadding)
+      )}px`;
+    }
+
+    showPhotoPreview(button, date) {
+      const preview = this.photoPreviews.get(date);
+      if (!preview || !this.isOpen()) return;
+      this.photoPreviewDay = button;
+      this.photoPreviewImage.dataset.fallbackSrc = preview.fallbackSrc;
+      this.photoPreviewImage.src = preview.src;
+      this.photoPreviewCaption.textContent = preview.count > 1
+        ? `${longDateLabel(date)} · ${preview.count} фото`
+        : longDateLabel(date);
+      this.photoPreview.hidden = false;
+      this.positionPhotoPreview(button);
+    }
+
+    hidePhotoPreview() {
+      this.photoPreview.hidden = true;
+      this.photoPreviewDay = null;
+    }
+
     render(focusDate = '') {
+      this.hidePhotoPreview();
       const reference = dateFromKey(focusDate)
         || dateFromKey(this.viewDate)
         || dateFromKey(this._value)
@@ -441,6 +537,10 @@
           button.classList.toggle('is-today', day.date === today);
           button.classList.toggle('is-selected', day.date === this._value);
           button.classList.toggle('has-photo', hasPhoto);
+          if (this.photoPreviews.has(day.date)) {
+            button.addEventListener('mouseenter', () => this.showPhotoPreview(button, day.date));
+            button.addEventListener('mouseleave', () => this.hidePhotoPreview());
+          }
           button.addEventListener('click', () => this.select(day.date));
           row.append(button);
         }
@@ -560,6 +660,7 @@
     formatDateKey,
     moveCalendarViewByArrow,
     normalizePhotoDates,
+    normalizePhotoPreviews,
     parseDateText
   };
 }));

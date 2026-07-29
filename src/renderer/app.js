@@ -3664,6 +3664,14 @@ function closeViewerDateEditor() {
 function openViewerDateEditor() {
   const photo = activePhotos[activeIndex];
   if (!canChangeViewerPhotoDate(photo) || viewerDateSaving) return;
+  viewerDatePicker.setPhotoPreviews(new Map([...byDate].map(([date, dayPhotos]) => {
+    const preferredPhoto = preferredPhotoForDate(date, dayPhotos);
+    return [date, {
+      src: preferredPhoto.thumbnailSrc || preferredPhoto.src,
+      fallbackSrc: preferredPhoto.src,
+      count: dayPhotos.length
+    }];
+  })));
   viewerDatePicker.setPhotoDates(byDate.keys());
   viewerDatePicker.setMax(localDateKey());
   viewerDatePicker.setValue(photo.date);

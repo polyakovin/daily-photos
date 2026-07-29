@@ -837,6 +837,23 @@ body.is-photo-dragging .photo-drop-card { transform: none; }
   box-shadow: 0 0 0 2px var(--forest);
 }
 .date-picker-day:disabled { color: rgba(109, 119, 111, .2); background: transparent; border-color: transparent; cursor: default; box-shadow: none; }
+.date-picker-photo-tooltip {
+  position: fixed;
+  z-index: 2147483647;
+  width: 176px;
+  padding: 6px;
+  display: grid;
+  gap: 6px;
+  color: white;
+  background: rgba(12, 30, 24, .96);
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 15px;
+  box-shadow: 0 15px 42px rgba(0, 0, 0, .34);
+  pointer-events: none;
+}
+.date-picker-photo-tooltip[hidden] { display: none; }
+.date-picker-photo-tooltip img { width: 100%; height: 108px; display: block; object-fit: cover; border-radius: 10px; }
+.date-picker-photo-tooltip span { padding: 0 3px 2px; overflow: hidden; font-size: 10px; font-weight: 700; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 .date-picker-footer { min-height: 33px; margin-top: 10px; padding-top: 10px; display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid rgba(22, 58, 48, .1); }
 .date-picker-footer button {
   min-height: 32px;
