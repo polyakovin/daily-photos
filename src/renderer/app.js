@@ -3558,6 +3558,7 @@ function closeViewerDateEditor() {
 function openViewerDateEditor() {
   const photo = activePhotos[activeIndex];
   if (!canChangeViewerPhotoDate(photo) || viewerDateSaving) return;
+  viewerDatePicker.setPhotoDates(byDate.keys());
   viewerDatePicker.setMax(localDateKey());
   viewerDatePicker.setValue(photo.date);
   viewerPanel.classList.add('is-editing-date');

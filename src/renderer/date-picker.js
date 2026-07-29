@@ -108,6 +108,11 @@
     return monthOffset ? addCalendarMonths(value, monthOffset) : '';
   }
 
+  function normalizePhotoDates(values) {
+    if (!values || typeof values[Symbol.iterator] !== 'function') return new Set();
+    return new Set([...values].filter((value) => dateFromKey(value)));
+  }
+
   function buildCalendarMonth(year, month) {
     const firstDay = new Date(year, month, 1);
     firstDay.setDate(firstDay.getDate() - ((firstDay.getDay() + 6) % 7));
@@ -146,6 +151,7 @@
       this.id = `date-picker-${++pickerSequence}`;
       this._value = '';
       this.viewDate = '';
+      this.photoDates = null;
       this.createPopover();
       this.bindEvents();
       this.setValue(input.dataset.value || input.value);
@@ -179,6 +185,7 @@
       this.nextButton = this.popover.querySelector('.date-picker-next');
       this.todayButton = this.popover.querySelector('.date-picker-today');
       this.clearButton = this.popover.querySelector('.date-picker-clear');
+      this.help = this.popover.querySelector('.date-picker-help');
       this.grid.setAttribute('aria-describedby', `${this.id}-help`);
       this.clearButton.hidden = this.input.required;
 
@@ -304,6 +311,14 @@
       this.readInput();
     }
 
+    setPhotoDates(values) {
+      this.photoDates = values === null ? null : normalizePhotoDates(values);
+      this.help.textContent = this.photoDates
+        ? '● — есть фото · ←/→ — месяцы · ↑/↓ — годы'
+        : 'В сетке: ←/→ — месяцы · ↑/↓ — годы';
+      if (this.isOpen()) this.render(this.viewDate);
+    }
+
     validate() {
       this.commitInput();
       return this.input.checkValidity();
@@ -408,12 +423,16 @@
         row.className = 'date-picker-week';
         row.setAttribute('role', 'row');
         for (const day of days.slice(rowIndex * 7, rowIndex * 7 + 7)) {
+          const hasPhoto = Boolean(this.photoDates?.has(day.date));
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'date-picker-day';
           button.dataset.date = day.date;
           button.setAttribute('role', 'gridcell');
-          button.setAttribute('aria-label', longDateLabel(day.date));
+          button.setAttribute('aria-label', [
+            longDateLabel(day.date),
+            this.photoDates ? (hasPhoto ? 'есть фотографии' : 'фотографий нет') : ''
+          ].filter(Boolean).join(', '));
           button.setAttribute('aria-selected', String(day.date === this._value));
           button.tabIndex = day.date === activeFocus ? 0 : -1;
           button.textContent = String(Number(day.date.slice(-2)));
@@ -421,6 +440,7 @@
           button.classList.toggle('is-outside', !day.inMonth);
           button.classList.toggle('is-today', day.date === today);
           button.classList.toggle('is-selected', day.date === this._value);
+          button.classList.toggle('has-photo', hasPhoto);
           button.addEventListener('click', () => this.select(day.date));
           row.append(button);
         }
@@ -535,6 +555,7 @@
     createDatePicker,
     formatDateKey,
     moveCalendarViewByArrow,
+    normalizePhotoDates,
     parseDateText
   };
 }));

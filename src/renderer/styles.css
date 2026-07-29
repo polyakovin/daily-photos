@@ -796,6 +796,22 @@ body.is-photo-dragging .photo-drop-card { transform: none; }
 .date-picker-day:hover { background: rgba(115, 150, 123, .14); border-color: rgba(22, 58, 48, .12); }
 .date-picker-day:focus-visible { outline: 3px solid rgba(213, 155, 43, .48); outline-offset: 0; }
 .date-picker-day.is-outside { color: rgba(109, 119, 111, .42); }
+.date-picker-day.has-photo {
+  background: rgba(115, 150, 123, .12);
+  border-color: rgba(22, 58, 48, .14);
+  font-weight: 750;
+}
+.date-picker-day.has-photo::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  background: var(--forest);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--paper);
+}
 .date-picker-day.is-today::after {
   content: '';
   position: absolute;
@@ -816,6 +832,10 @@ body.is-photo-dragging .photo-drop-card { transform: none; }
 }
 .date-picker-day.is-selected:hover { background: #245648; }
 .date-picker-day.is-selected::after { background: #efb84c; }
+.date-picker-day.is-selected.has-photo::before {
+  background: #efb84c;
+  box-shadow: 0 0 0 2px var(--forest);
+}
 .date-picker-day:disabled { color: rgba(109, 119, 111, .2); background: transparent; border-color: transparent; cursor: default; box-shadow: none; }
 .date-picker-footer { min-height: 33px; margin-top: 10px; padding-top: 10px; display: flex; justify-content: space-between; gap: 8px; border-top: 1px solid rgba(22, 58, 48, .1); }
 .date-picker-footer button {
@@ -2375,9 +2395,12 @@ body .viewer-media img.is-loaded.is-press-zoomable {
 :root[data-theme="dark"] .date-picker-day { color: #e2ece6; }
 :root[data-theme="dark"] .date-picker-week .date-picker-day:nth-child(n+6) { color: #e7a198; }
 :root[data-theme="dark"] .date-picker-day.is-outside { color: rgba(216, 232, 222, .3); }
+:root[data-theme="dark"] .date-picker-day.has-photo { background: rgba(120, 179, 142, .13); border-color: rgba(168, 213, 185, .24); }
+:root[data-theme="dark"] .date-picker-day.has-photo::before { background: #a8d5b9; box-shadow: 0 0 0 2px #19241f; }
 :root[data-theme="dark"] .date-picker-day:hover { background: rgba(216, 232, 222, .1); border-color: rgba(216, 232, 222, .1); }
 :root[data-theme="dark"] .date-picker-day.is-selected { color: #17231d; background: #b8d2c2; border-color: #b8d2c2; }
 :root[data-theme="dark"] .date-picker-day.is-selected:hover { background: #cae0d3; }
+:root[data-theme="dark"] .date-picker-day.is-selected.has-photo::before { background: #8a5a00; box-shadow: 0 0 0 2px #b8d2c2; }
 :root[data-theme="dark"] .date-picker-footer { border-top-color: rgba(216, 232, 222, .1); }
 :root[data-theme="dark"] .map-photo-picker-item { background: rgba(225, 239, 230, .07); border-color: rgba(216, 232, 222, .14); }
 :root[data-theme="dark"] .map-place-picker-item { background: rgba(225, 239, 230, .07); border-color: rgba(216, 232, 222, .14); }

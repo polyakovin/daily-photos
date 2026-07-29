@@ -5,6 +5,7 @@ const {
   buildCalendarMonth,
   formatDateKey,
   moveCalendarViewByArrow,
+  normalizePhotoDates,
   parseDateText
 } = require('../src/renderer/date-picker');
 
@@ -42,4 +43,12 @@ test('moves calendar view by months horizontally and years vertically', () => {
   assert.equal(addCalendarMonths('2024-01-31', 1), '2024-02-29');
   assert.equal(addCalendarMonths('2025-01-31', 1), '2025-02-28');
   assert.equal(addCalendarMonths('2024-02-29', 12), '2025-02-28');
+});
+
+test('keeps only valid occupied photo dates for calendar markers', () => {
+  assert.deepEqual(
+    [...normalizePhotoDates(['2024-06-15', 'invalid', '2024-06-15', '2024-06-16'])],
+    ['2024-06-15', '2024-06-16']
+  );
+  assert.deepEqual([...normalizePhotoDates(null)], []);
 });
