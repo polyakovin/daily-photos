@@ -84,14 +84,17 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="mapPlaceSuggestionsToggle"[^>]*aria-expanded="false"/);
   assert.match(appHtml, /id="viewerLocationSearch"/);
   assert.match(appHtml, /id="viewerLocationSuggestionsToggle"[^>]*aria-expanded="false"/);
+  assert.match(appHtml, /id="viewerMiniMap"[^>]*hidden/);
+  assert.match(appHtml, /id="viewerMiniMapCanvas"/);
+  assert.match(appHtml, /id="viewerMiniMapOpen"[^>]*aria-label="Открыть фотографию на карте"/);
   assert.match(appHtml, /id="viewerDateEdit"/);
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=97"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=98"/);
   assert.match(appHtml, /src="\/map\.js\?v=4"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
-  assert.match(appHtml, /src="\/app\.js\?v=84"/);
+  assert.match(appHtml, /src="\/app\.js\?v=85"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -115,6 +118,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.equal(stylesResponse.status, 200);
   const styles = await stylesResponse.text();
   assert.match(styles, /\.geo-map-hover-preview/);
+  assert.match(styles, /\.viewer-mini-map\s*\{[^}]*opacity:\s*\.56/);
+  assert.match(styles, /\.viewer-mini-map:hover[\s\S]*?opacity:\s*1/);
+  assert.match(styles, /\.viewer-mini-map-canvas\s*\{[^}]*pointer-events:\s*none/);
   assert.match(styles, /\.geo-map-photo-fan/);
   assert.match(
     styles,
@@ -186,6 +192,15 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /openMapFanPhoto/);
   assert.match(appScript, /onPhotoClick:\s*openMapFanPhoto/);
   assert.match(appScript, /changeViewerPhotoDate/);
+  assert.match(appScript, /function updateViewerMiniMap\(photo\)/);
+  const openViewerPhotoOnMapBody = appScript.match(/function openCurrentViewerPhotoOnMap\(\) \{([\s\S]*?)\n\}/)?.[1];
+  assert.ok(openViewerPhotoOnMapBody);
+  assert.match(openViewerPhotoOnMapBody, /normalizeMapCoordinates\(photo\)/);
+  assert.match(openViewerPhotoOnMapBody, /viewer\.close\(\)/);
+  assert.match(openViewerPhotoOnMapBody, /switchView\('map'\)/);
+  assert.match(openViewerPhotoOnMapBody, /mapController\.setCenter\(location/);
+  assert.match(openViewerPhotoOnMapBody, /showMapPhotoGroup\(\s*\[photo\]/);
+  assert.match(appScript, /viewerMiniMapOpen\.addEventListener\('click', openCurrentViewerPhotoOnMap\)/);
   assert.match(appScript, /viewerDatePicker\.setPhotoDates\(byDate\.keys\(\)\)/);
   assert.match(appScript, /viewerDatePicker\.setPhotoPreviews\(/);
   const viewerDateEditorBody = appScript.match(/function openViewerDateEditor\(\) \{([\s\S]*?)\n\}/)?.[1];

@@ -101,6 +101,9 @@ const viewer = document.querySelector('#viewer');
 const viewerPanel = viewer.querySelector('.viewer-panel');
 const viewerMedia = viewer.querySelector('.viewer-media');
 const viewerImage = document.querySelector('#viewerImage');
+const viewerMiniMap = document.querySelector('#viewerMiniMap');
+const viewerMiniMapCanvas = document.querySelector('#viewerMiniMapCanvas');
+const viewerMiniMapOpen = document.querySelector('#viewerMiniMapOpen');
 const imageLoader = document.querySelector('#imageLoader');
 const viewerDateEdit = document.querySelector('#viewerDateEdit');
 const viewerDateForm = document.querySelector('#viewerDateForm');
@@ -250,6 +253,7 @@ let mapPlacePickerSaving = false;
 let mapPlacePickerContext = 'map';
 let mapPlacePickerSuggestionsVisible = false;
 let mapLocationSearch = null;
+let viewerMiniMapController = null;
 let viewerLocationMap = null;
 let viewerLocationDraft = null;
 let viewerLocationSaving = false;
@@ -1634,6 +1638,7 @@ function updatePhotoLocationState(state, { render = true } = {}) {
   }
   if (viewer.open && activePhotos[activeIndex]?.id === photo.id) {
     updateViewerLocationControls(photo);
+    updateViewerMiniMap(photo);
   }
   return photo;
 }
@@ -2532,6 +2537,51 @@ function updateViewerLocationControls(photo = activePhotos[activeIndex]) {
   if (!hasPhoto) return;
   viewerLocationButtonLabel.textContent = photoHasLocation(photo) ? 'Место' : 'Добавить место';
   viewerLocationButton.classList.toggle('is-active', photo.locationSource === 'manual');
+}
+
+function ensureViewerMiniMap() {
+  if (viewerMiniMapController) return;
+  viewerMiniMapController = new InteractiveMap(viewerMiniMapCanvas, {
+    center: { latitude: 30, longitude: 20 },
+    zoom: 13
+  });
+}
+
+function updateViewerMiniMap(photo) {
+  const location = photo?.src ? normalizeMapCoordinates(photo) : null;
+  viewerMiniMap.hidden = !location;
+  if (!location) {
+    viewerMiniMapController?.setSelection(null);
+    return;
+  }
+
+  ensureViewerMiniMap();
+  viewerMiniMapOpen.setAttribute(
+    'aria-label',
+    `Открыть фотографию за ${formatDate(photo.date)} на карте`
+  );
+  viewerMiniMapController.setCenter(location, 13);
+  viewerMiniMapController.setSelection(location);
+  requestAnimationFrame(() => viewerMiniMapController?.scheduleRender());
+}
+
+function openCurrentViewerPhotoOnMap() {
+  const photo = activePhotos[activeIndex];
+  const location = normalizeMapCoordinates(photo);
+  if (!photo?.src || !location) return;
+
+  viewer.close();
+  switchView('map');
+  requestAnimationFrame(() => {
+    ensureMap();
+    mapController.setSelection(null);
+    mapController.setCenter(location, 13);
+    showMapPhotoGroup(
+      [photo],
+      linkedReferencePlaces(locationReferencePlaces, [photo])
+    );
+    mapController.scheduleRender();
+  });
 }
 
 function setViewerLocationDraft(location) {
@@ -4034,6 +4084,7 @@ function updateViewer() {
   viewerBlurToggle.disabled = !hasPhoto;
   updateViewerTrashControl(photo);
   updateViewerLocationControls(photo);
+  updateViewerMiniMap(photo);
   updateViewerHighlightControls(photo);
   renderViewerAlternatives(photo);
   if (viewer.open) persistNavigationState();
@@ -4442,6 +4493,7 @@ viewerDateForm.addEventListener('submit', (event) => {
 });
 viewerTrashButton.addEventListener('click', () => void trashViewerPhoto());
 viewerLocationButton.addEventListener('click', openViewerLocationEditor);
+viewerMiniMapOpen.addEventListener('click', openCurrentViewerPhotoOnMap);
 document.querySelector('#viewerLocationClose').addEventListener('click', closeViewerLocationEditor);
 document.querySelector('#viewerLocationZoomIn').addEventListener('click', () => viewerLocationMap?.zoomBy(1));
 document.querySelector('#viewerLocationZoomOut').addEventListener('click', () => viewerLocationMap?.zoomBy(-1));

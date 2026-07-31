@@ -2149,6 +2149,35 @@ body .viewer-media img.is-loaded.is-press-zoomable {
     transform 240ms cubic-bezier(.2, .75, .25, 1),
     translate 0s;
 }
+.viewer-mini-map {
+  position: absolute;
+  z-index: 4;
+  top: 16px;
+  left: 16px;
+  width: min(220px, calc(100vw - 92px));
+  height: 138px;
+  overflow: hidden;
+  background: #dce6dc;
+  border: 1px solid rgba(255,255,255,.5);
+  border-radius: 17px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.34);
+  opacity: .56;
+  isolation: isolate;
+  transition: opacity 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+.viewer-mini-map[hidden] { display: none; }
+.viewer-mini-map:hover,
+.viewer-mini-map:focus-within {
+  box-shadow: 0 16px 42px rgba(0,0,0,.46);
+  opacity: 1;
+  transform: translateY(-1px);
+}
+.viewer-mini-map-canvas { position: absolute; inset: 0; pointer-events: none; }
+.viewer-mini-map-open { position: absolute; z-index: 2; inset: 0; padding: 0; background: transparent; border: 0; cursor: pointer; }
+.viewer-mini-map-open:focus-visible { outline: 3px solid #efb84c; outline-offset: -4px; }
+.viewer-mini-map-label { position: absolute; z-index: 3; left: 8px; bottom: 7px; padding: 4px 7px; color: white; background: rgba(9,20,16,.8); border-radius: 7px; font-size: 9px; font-weight: 750; pointer-events: none; }
+.viewer-mini-map > a { position: absolute; z-index: 3; right: 6px; bottom: 6px; padding: 3px 5px; color: #244b3e; background: rgba(255,255,255,.84); border-radius: 5px; font-size: 8px; text-decoration: none; }
+.viewer-panel.is-diary-visible .viewer-mini-map { opacity: 0; pointer-events: none; }
 .image-loader { position: absolute; color: rgba(255,255,255,.7); font-size: 13px; letter-spacing: .08em; }
 .image-loader.is-hidden { display: none; }
 .viewer-location-editor {
@@ -2705,6 +2734,7 @@ body .viewer-media img.is-loaded.is-press-zoomable {
   .random-footer { padding: 14px 16px; }
   .random-footer span:last-child { display: none; }
   .viewer-panel { width: 100%; height: 100%; margin: 0; border-radius: 0; }
+  .viewer-mini-map { top: 12px; left: 12px; width: min(168px, calc(100vw - 78px)); height: 106px; border-radius: 14px; }
   .viewer-location-editor { width: 100%; height: 100%; min-height: 0; border: 0; border-radius: 0; }
   .viewer-location-search { top: 76px; left: 12px; width: calc(100% - 76px); }
   .viewer-location-map-controls { top: 76px; right: 12px; }
@@ -2758,6 +2788,7 @@ body .viewer-media img.is-loaded.is-press-zoomable {
 @media (prefers-reduced-motion: reduce) {
   .background-operation-tooltip,
   .background-operation-progress i,
+  .viewer-mini-map,
   .viewer-media img { transition: none; }
   .background-operation-icon i { animation-duration: 1.6s; }
 }

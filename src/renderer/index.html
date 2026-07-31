@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Фото дня — календарь</title>
     <script src="/theme.js?v=1"></script>
-    <link rel="stylesheet" href="/styles.css?v=97" />
+    <link rel="stylesheet" href="/styles.css?v=98" />
   </head>
   <body>
     <main class="shell">
@@ -566,6 +566,17 @@
           <img id="viewerImage" alt="" />
           <div class="image-loader" id="imageLoader">Проявляем снимок…</div>
         </div>
+        <aside class="viewer-mini-map" id="viewerMiniMap" hidden aria-label="Место съёмки на карте">
+          <div class="viewer-mini-map-canvas" id="viewerMiniMapCanvas" aria-hidden="true"></div>
+          <button
+            class="viewer-mini-map-open"
+            id="viewerMiniMapOpen"
+            type="button"
+            aria-label="Открыть фотографию на карте"
+          ></button>
+          <span class="viewer-mini-map-label" aria-hidden="true">Открыть на карте</span>
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
+        </aside>
         <section class="viewer-location-editor" id="viewerLocationEditor" hidden aria-label="Место съёмки">
           <div class="viewer-location-heading">
             <div>
@@ -700,6 +711,6 @@
     <script src="/photo-import-date.js?v=1" defer></script>
     <script src="/date-picker.js?v=7" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=84" defer></script>
+    <script src="/app.js?v=85" defer></script>
   </body>
 </html>
