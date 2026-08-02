@@ -97,9 +97,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
   assert.match(appHtml, /href="\/styles\.css\?v=103"/);
-  assert.match(appHtml, /src="\/map\.js\?v=8"/);
+  assert.match(appHtml, /src="\/map\.js\?v=9"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
-  assert.match(appHtml, /src="\/app\.js\?v=89"/);
+  assert.match(appHtml, /src="\/app\.js\?v=90"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -192,6 +192,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /suggestionsButton:\s*viewerLocationSuggestionsToggle/);
   assert.doesNotMatch(appScript, /viewerLocationPlaceSearch\?\.showSuggestions\(\)/);
   assert.match(appScript, /mapPlaceSuggestionsToggle\.addEventListener\('click'/);
+  assert.match(appScript, /mapPlaceSuggestionsToggle\.disabled = !availableSuggestionSections\.length/);
+  assert.match(appScript, /activeMapRelatedPlaces = savedPlace \? \[place\] : \[\]/);
   assert.match(appScript, /linkSelectedPhotoToPlace/);
   assert.match(appScript, /function startMapPhotoPlacement\(\)/);
   assert.match(appScript, /const withoutLocation = unlocatedPhotos\(photos\)\.length/);

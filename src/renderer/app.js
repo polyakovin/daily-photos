@@ -2418,18 +2418,19 @@ function renderMapPlacePicker() {
   const query = mapPlacePickerSearch.value.trim();
   const candidates = mapPlacePickerCandidates(query);
   const visibleCandidates = candidates.slice(0, 240);
+  const availableSuggestionSections = query ? [] : placeSuggestionSections(6);
   const sections = query
     ? [{
       title: 'Результаты поиска',
       type: 'all',
       candidates: visibleCandidates
     }]
-    : mapPlacePickerSuggestionsVisible ? placeSuggestionSections(6).map((section) => ({
+    : mapPlacePickerSuggestionsVisible ? availableSuggestionSections.map((section) => ({
       ...section,
       candidates: section.candidates.slice(0, 6)
     })) : [];
 
-  mapPlaceSuggestionsToggle.disabled = !locationReferencePlaces.length || mapPlacePickerSaving;
+  mapPlaceSuggestionsToggle.disabled = !availableSuggestionSections.length || mapPlacePickerSaving;
   mapPlaceSuggestionsToggle.setAttribute(
     'aria-expanded',
     String(!query && mapPlacePickerSuggestionsVisible)
@@ -2493,15 +2494,19 @@ function closeMapPlacePicker() {
 
 async function linkSelectedPhotoToPlace(place) {
   const photo = mapPlacePickerActivePhoto;
-  if (!photo?.id || !place?.id || mapPlacePickerSaving) return;
+  const location = locationFromReferencePlace(place);
+  if (!photo?.id || !location || mapPlacePickerSaving) return;
   const context = mapPlacePickerContext;
+  const savedPlace = Boolean(
+    place?.id && locationReferencePlaces.some((candidate) => candidate.id === place.id)
+  );
   mapPlacePickerSaving = true;
   if (context === 'assignment') mapAssignmentChoosePlace.disabled = true;
   else mapPhotoChoosePlace.disabled = true;
   renderMapPlacePicker();
   mapPlacePickerStatus.textContent = `Привязываем фото за ${formatDate(photo.date)} к месту «${place.name}»…`;
   try {
-    const updatedPhoto = await persistPhotoLocation(photo, locationFromReferencePlace(place));
+    const updatedPhoto = await persistPhotoLocation(photo, location);
     closeMapPlacePicker();
     if (context === 'assignment') {
       mapController?.setCenter(place, Math.max(12, mapController.getCenter().zoom));
@@ -2513,7 +2518,7 @@ async function linkSelectedPhotoToPlace(place) {
     activeMapPhotos = [updatedPhoto];
     activeMapPhotoIndex = 0;
     activeMapPlaces = [];
-    activeMapRelatedPlaces = [place];
+    activeMapRelatedPlaces = savedPlace ? [place] : [];
     mapController?.setCenter(place, Math.max(12, mapController.getCenter().zoom));
     renderMapPhotoCard();
   } catch (error) {

@@ -261,7 +261,7 @@ test('points joined at maximum zoom count as one place and share suggestion freq
     { ...place, id: 'exact-photo', date: '2026-01-01', mapPointType: 'photo' },
     nearbyPhoto,
     distantPhoto
-  ]);
+  ], 1);
   assert.deepEqual(
     suggestions.popular.map(({ place: suggestionPlace, photoCount }) => ({
       id: suggestionPlace.id,
@@ -404,6 +404,59 @@ test('place suggestions use selection history for recent and photo counts for po
   assert.deepEqual(
     suggestions.popular.map(({ place, photoCount }) => [place.id, photoCount]),
     [['popular', 3], ['recent', 2]]
+  );
+});
+
+test('popular suggestions include large photo clusters without a saved place', () => {
+  const savedPlace = {
+    id: 'saved-place',
+    name: 'Сохранённое место',
+    latitude: 41.7151,
+    longitude: 44.8271
+  };
+  const savedPlacePhotos = Array.from({ length: 64 }, (_, index) => ({
+    id: `saved-${index}`,
+    date: '2024-01-01',
+    latitude: savedPlace.latitude,
+    longitude: savedPlace.longitude
+  }));
+  const frequentPhotos = Array.from({ length: 320 }, (_, index) => ({
+    id: `frequent-${index}`,
+    date: '2025-01-01',
+    latitude: 55.74062,
+    longitude: 37.6214,
+    locationPlace: 'Дом',
+    locationCountry: 'Россия'
+  }));
+
+  assert.deepEqual(
+    referencePlaceSuggestions(
+      [savedPlace],
+      [...savedPlacePhotos, ...frequentPhotos],
+      2
+    ).popular.map(({ place, photoCount }) => ({
+      id: place.id,
+      name: place.name,
+      country: place.country,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      photoCount
+    })),
+    [{
+      id: undefined,
+      name: 'Дом',
+      country: 'Россия',
+      latitude: 55.74062,
+      longitude: 37.6214,
+      photoCount: 320
+    }, {
+      id: 'saved-place',
+      name: 'Сохранённое место',
+      country: undefined,
+      latitude: 41.7151,
+      longitude: 44.8271,
+      photoCount: 64
+    }]
   );
 });
 

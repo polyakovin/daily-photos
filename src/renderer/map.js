@@ -112,6 +112,27 @@
     return mapClusterKey(value, MAX_ZOOM);
   }
 
+  function photoClusterPlace(photo) {
+    const coordinates = displayCoordinates(photo);
+    if (!coordinates) return null;
+    const place = typeof photo?.locationPlace === 'string'
+      ? photo.locationPlace.trim()
+      : '';
+    const country = typeof photo?.locationCountry === 'string'
+      ? photo.locationCountry.trim()
+      : '';
+    return {
+      name: place || `${coordinates.latitude.toFixed(5)}, ${coordinates.longitude.toFixed(5)}`,
+      ...coordinates,
+      ...(country ? { country } : {})
+    };
+  }
+
+  function photoClusterPlaceScore(photo) {
+    return Number(Boolean(photo?.locationPlace?.trim?.())) * 2
+      + Number(Boolean(photo?.locationCountry?.trim?.()));
+  }
+
   function linkedReferencePlaces(places, photos) {
     const linkedReferenceIds = new Set(
       (Array.isArray(photos) ? photos : [])
@@ -137,7 +158,9 @@
           key: clusterKey || `place:${stat.place?.id || stat.index}`,
           stats: [],
           photoCount: 0,
-          latestDate: ''
+          latestDate: '',
+          inferredPlace: null,
+          inferredPlaceScore: -1
         };
         groups.push(group);
         if (clusterKey) groupsByCluster.set(clusterKey, group);
@@ -153,8 +176,28 @@
       const clusterKey = maxZoomClusterKey(photo);
       const coordinateGroup = groupsByCluster.get(clusterKey);
       if (coordinateGroup) matchingGroups.add(coordinateGroup);
+      if (!matchingGroups.size && clusterKey) {
+        const group = {
+          key: clusterKey,
+          stats: [],
+          photoCount: 0,
+          latestDate: '',
+          inferredPlace: null,
+          inferredPlaceScore: -1
+        };
+        groups.push(group);
+        groupsByCluster.set(clusterKey, group);
+        matchingGroups.add(group);
+      }
       for (const group of matchingGroups) {
         group.photoCount += 1;
+        if (!group.stats.length) {
+          const inferredPlaceScore = photoClusterPlaceScore(photo);
+          if (inferredPlaceScore > group.inferredPlaceScore) {
+            group.inferredPlace = photoClusterPlace(photo);
+            group.inferredPlaceScore = inferredPlaceScore;
+          }
+        }
         const date = typeof photo?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(photo.date)
           ? photo.date
           : '';
@@ -192,8 +235,10 @@
     return {
       all: stats.map(suggestionFromStat).sort(compareNames),
       recent,
-      popular: groups.filter(({ photoCount }) => photoCount > 0).map((group) => ({
-        place: group.stats[0].place,
+      popular: groups.filter((group) => (
+        group.photoCount > 0 && (group.stats[0]?.place || group.inferredPlace)
+      )).map((group) => ({
+        place: group.stats[0]?.place || group.inferredPlace,
         photoCount: group.photoCount,
         latestDate: group.latestDate
       })).sort((a, b) => (
