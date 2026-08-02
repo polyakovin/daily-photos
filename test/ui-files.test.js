@@ -148,6 +148,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.map-assignment-preview[\s\S]*?width:\s*100%[\s\S]*?aspect-ratio:\s*248\s*\/\s*184/);
   assert.doesNotMatch(styles, /\.map-assignment-preview\s*>\s*span/);
   assert.match(styles, /\.map-assignment-actions\s*\{\s*grid-column:\s*1/);
+  assert.match(
+    styles,
+    /\.map-stage-wrap\.is-assigning \.map-search\s*\{[^}]*top:\s*18px;[^}]*bottom:\s*auto;[^}]*left:\s*308px;/
+  );
   assert.match(styles, /\.map-photo-preview/);
   assert.doesNotMatch(styles, /#mapPhotoOpen/);
   assert.match(styles, /\.about-dialog/);
