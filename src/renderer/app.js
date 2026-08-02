@@ -1870,6 +1870,7 @@ function startMapPlayback() {
   mapPlaybackActive = true;
   mapPlaybackIndex = 0;
   mapPhotoCard.hidden = true;
+  mapController.setHighlightedPoint(null);
   mapPlayback.hidden = false;
   mapPlaybackButton.setAttribute('aria-pressed', 'true');
   mapPlaybackButton.textContent = 'Закрыть анимацию';
@@ -1969,6 +1970,7 @@ function startMapPlaceCreation() {
   mapPlaceEditor.hidden = false;
   mapStageWrap.classList.add('is-adding-place');
   mapController.setSelection(null);
+  mapController.setHighlightedPoint(null);
   mapController.setSelectionMode(true);
   mapAddPlaceButton.disabled = true;
   mapAssignButton.disabled = true;
@@ -2044,6 +2046,7 @@ function ensureMap() {
         setMapPlaceDraft(location);
       } else {
         mapController?.setSelection(null);
+        mapController?.setHighlightedPoint(null);
         mapPhotoCard.hidden = true;
       }
     },
@@ -2075,11 +2078,13 @@ function ensureMap() {
 function renderMapPhotoCard() {
   const photo = activeMapPhotos[activeMapPhotoIndex];
   if (!photo) {
+    mapController?.setHighlightedPoint(null);
     mapPhotoChoosePlace.hidden = true;
     mapPointDelete.hidden = true;
     mapPhotoCard.hidden = true;
     return;
   }
+  mapController?.setHighlightedPoint(photo);
   mapPhotoCard.classList.remove('is-place-only');
   mapPhotoPreview.hidden = false;
   mapPlaceAttachPhoto.hidden = !activeMapRelatedPlaces.length;
@@ -2122,11 +2127,13 @@ function showMapPhotoGroup(group, relatedPlaces = []) {
 function renderMapPlaceCard() {
   const place = activeMapPlaces[activeMapPlaceIndex];
   if (!place) {
+    mapController?.setHighlightedPoint(null);
     mapPhotoChoosePlace.hidden = true;
     mapPointDelete.hidden = true;
     mapPhotoCard.hidden = true;
     return;
   }
+  mapController?.setHighlightedPoint(place);
   activeMapPhotos = [];
   activeMapRelatedPlaces = [];
   mapPhotoCard.classList.add('is-place-only');
@@ -2188,6 +2195,7 @@ function refreshMapCardAfterDeletion() {
   if (activeMapPhotos.length) renderMapPhotoCard();
   else if (activeMapPlaces.length) renderMapPlaceCard();
   else {
+    mapController?.setHighlightedPoint(null);
     mapPointDelete.hidden = true;
     mapPhotoCard.hidden = true;
   }
@@ -2573,6 +2581,7 @@ function renderMapAssignment() {
   mapAssignmentSkip.hidden = mapAssignmentMode === 'single';
   mapAssignmentDone.textContent = mapAssignmentMode === 'single' ? 'Отмена' : 'Готово';
   mapController?.setSelection(null);
+  mapController?.setHighlightedPoint(null);
   mapController?.setSelectionMode(true);
   mapStageWrap.classList.add('is-assigning');
 }
@@ -2724,6 +2733,7 @@ function openCurrentViewerPhotoOnMap() {
     ensureMap();
     mapController.setSelection(null);
     mapController.setCenter(location, 13);
+    mapController.setHighlightedPoint(photo);
     showMapPhotoGroup(
       [photo],
       linkedReferencePlaces(locationReferencePlaces, [photo])
@@ -4491,7 +4501,10 @@ mapAssignmentPreview.addEventListener('click', openCurrentMapAssignmentPhoto);
 mapAssignmentChoosePlace.addEventListener('click', () => {
   openMapPlacePicker(mapAssignmentPhotos[mapAssignmentIndex], 'assignment');
 });
-document.querySelector('#mapPhotoClose').addEventListener('click', () => { mapPhotoCard.hidden = true; });
+document.querySelector('#mapPhotoClose').addEventListener('click', () => {
+  mapPhotoCard.hidden = true;
+  mapController?.setHighlightedPoint(null);
+});
 document.querySelector('#mapPhotoPrevious').addEventListener('click', () => moveMapPhoto(-1));
 document.querySelector('#mapPhotoNext').addEventListener('click', () => moveMapPhoto(1));
 mapPhotoPreview.addEventListener('click', openCurrentMapPhoto);

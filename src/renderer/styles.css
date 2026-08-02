@@ -1543,6 +1543,22 @@ body.presentation-mode .timeline-item img.is-presentation-blurred { filter: blur
 .geo-map-marker.is-reference:not(.is-cluster) .geo-map-marker-hit::after { background: #fff3d6; }
 .geo-map-marker.is-reference.is-cluster .geo-map-marker-hit { background: #9a5835; }
 .geo-map-marker.has-photo-stack { z-index: 4; }
+.geo-map-marker.is-highlighted { z-index: 6; }
+.geo-map-marker.is-highlighted::before {
+  content: '';
+  position: absolute;
+  inset: -9px;
+  background: rgba(239, 184, 76, .2);
+  border: 3px solid #efb84c;
+  border-radius: 50%;
+  box-shadow: 0 0 0 5px rgba(255, 253, 247, .72), 0 8px 24px rgba(80, 54, 10, .42);
+  pointer-events: none;
+}
+.geo-map-marker.is-highlighted .geo-map-marker-hit {
+  background: #214f40;
+  border-color: #fff3d6;
+  box-shadow: 0 7px 20px rgba(13, 38, 31, .48);
+}
 .geo-map-marker-count { position: relative; z-index: 2; pointer-events: none; }
 .geo-map-photo-fan {
   position: absolute;

@@ -96,10 +96,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=102"/);
-  assert.match(appHtml, /src="\/map\.js\?v=6"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=103"/);
+  assert.match(appHtml, /src="\/map\.js\?v=7"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
-  assert.match(appHtml, /src="\/app\.js\?v=87"/);
+  assert.match(appHtml, /src="\/app\.js\?v=88"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -142,6 +142,7 @@ test('десктопный сервер отдаёт вспомогательн�
     /:root\[data-theme="dark"\] \.calendar-day\.has-photo \.day-number\s*\{\s*color:\s*white;/
   );
   assert.match(styles, /\.geo-map-marker\.has-photo-stack:hover \.geo-map-fan-photo/);
+  assert.match(styles, /\.geo-map-marker\.is-highlighted::before/);
   assert.match(styles, /\.geo-map-fan-photo:hover/);
   assert.match(styles, /opacity:\s*0[\s\S]*?translate3d\(var\(--fan-x\),\s*var\(--fan-y\),\s*0\)/);
   assert.match(styles, /#mapPointDelete/);
@@ -220,6 +221,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(openViewerPhotoOnMapBody, /viewer\.close\(\)/);
   assert.match(openViewerPhotoOnMapBody, /switchView\('map'\)/);
   assert.match(openViewerPhotoOnMapBody, /mapController\.setCenter\(location/);
+  assert.match(openViewerPhotoOnMapBody, /mapController\.setHighlightedPoint\(photo\)/);
   assert.match(openViewerPhotoOnMapBody, /showMapPhotoGroup\(\s*\[photo\]/);
   assert.match(appScript, /viewerMiniMapOpen\.addEventListener\('click', openCurrentViewerPhotoOnMap\)/);
   assert.match(appScript, /viewerDatePicker\.setPhotoDates\(byDate\.keys\(\)\)/);

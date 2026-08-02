@@ -4,6 +4,7 @@ const {
   buildMapPlaybackFrames,
   clusterProjectedPoints,
   distinctMapPointCount,
+  groupContainsMapPoint,
   InteractiveMap,
   linkedReferencePlaces,
   mapPlaybackDelay,
@@ -71,6 +72,17 @@ test('marker clusters use a world grid that does not depend on viewport movement
     second.map(({ key, points: grouped }) => [key, grouped.map((point) => point.id)])
   );
   assert.equal(first.find((group) => group.points.some((point) => point.id === 'a')).points.length, 2);
+});
+
+test('selected map point highlights its marker or containing cluster', () => {
+  const selected = { id: 'selected-photo', latitude: 55.7558, longitude: 37.6173 };
+  const sameCoordinates = { id: 'same-place', latitude: 55.7558, longitude: 37.6173 };
+  const elsewhere = { id: 'elsewhere', latitude: 41.7151, longitude: 44.8271 };
+
+  assert.equal(groupContainsMapPoint([selected, elsewhere], selected), true);
+  assert.equal(groupContainsMapPoint([sameCoordinates], selected), true);
+  assert.equal(groupContainsMapPoint([elsewhere], selected), false);
+  assert.equal(groupContainsMapPoint([selected], null), false);
 });
 
 function runMapPointerGesture({ startedOnMarker, moved }) {

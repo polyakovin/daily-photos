@@ -82,6 +82,17 @@
       : '';
   }
 
+  function groupContainsMapPoint(points, selectedPoint) {
+    const selectedCoordinates = pointCoordinates(selectedPoint);
+    if (!selectedCoordinates) return false;
+    const selectedId = selectedPoint?.id;
+    const selectedKey = mapCoordinateKey(selectedCoordinates);
+    return (Array.isArray(points) ? points : []).some((point) => (
+      Boolean(selectedId && point?.id === selectedId)
+      || mapCoordinateKey(point) === selectedKey
+    ));
+  }
+
   function markerCellSize(zoom) {
     return zoom >= 13 ? 42 : zoom >= 7 ? 48 : 56;
   }
@@ -344,6 +355,7 @@
       this.zoom = clamp(Math.round(Number(options.zoom) || 2), MIN_ZOOM, MAX_ZOOM);
       this.points = [];
       this.selection = null;
+      this.highlightedPoint = null;
       this.selectionMode = Boolean(options.selectionMode);
       this.tileNodes = new Map();
       this.markerNodes = new Map();
@@ -504,6 +516,12 @@
       for (const marker of this.markerNodes.values()) marker.photoDayStackPhotos = null;
       if (fit) this.fitPoints(this.points);
       else this.scheduleRender();
+    }
+
+    setHighlightedPoint(point) {
+      const coordinates = pointCoordinates(point);
+      this.highlightedPoint = coordinates ? { ...point, ...coordinates } : null;
+      this.scheduleRender();
     }
 
     setPlaybackRoute(points, { activePoint = null, preview = null } = {}) {
@@ -946,8 +964,9 @@
         const count = group.points.length;
         const referenceOnly = group.points.every((point) => point.mapPointType === 'reference');
         const stackPhotos = marker.photoDayStackPhotos || photoStackPoints(group.points);
+        const highlighted = groupContainsMapPoint(group.points, this.highlightedPoint);
         marker.photoDayStackPhotos = stackPhotos;
-        marker.className = `geo-map-marker${count > 1 ? ' is-cluster' : ''}${referenceOnly ? ' is-reference' : ''}${stackPhotos.length ? ' has-photo-stack' : ''}`;
+        marker.className = `geo-map-marker${count > 1 ? ' is-cluster' : ''}${referenceOnly ? ' is-reference' : ''}${stackPhotos.length ? ' has-photo-stack' : ''}${highlighted ? ' is-highlighted' : ''}`;
         marker.style.transform = `translate3d(${screen.x}px, ${screen.y}px, 0) translate(-50%, -50%)`;
         this.renderMarkerContent(marker, group, count, stackPhotos);
         marker.photoDayHit.setAttribute(
@@ -960,6 +979,8 @@
               ? `Открыть место ${group.points[0].name || ''}`.trim()
               : 'Открыть фотографию'
         );
+        if (highlighted) marker.photoDayHit.setAttribute('aria-current', 'location');
+        else marker.photoDayHit.removeAttribute('aria-current');
         marker.photoDayGroup = group;
         marker.photoDayScreen = screen;
         if (this.previewKey === group.key) this.positionPointPreview(screen);
@@ -1015,6 +1036,7 @@
     buildMapPlaybackFrames,
     clusterProjectedPoints,
     distinctMapPointCount,
+    groupContainsMapPoint,
     linkedReferencePlaces,
     mapCoordinateKey,
     mapPlaybackDelay,
