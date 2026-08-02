@@ -2474,7 +2474,7 @@ function openMapPlacePicker(photo = activeMapPhotos[activeMapPhotoIndex], contex
   mapPlacePickerActivePhoto = photo;
   mapPlacePickerSaving = false;
   mapPlacePickerContext = context;
-  mapPlacePickerSuggestionsVisible = false;
+  mapPlacePickerSuggestionsVisible = context === 'assignment';
   mapPlacePickerSearch.value = '';
   mapPlacePickerPhoto.textContent = formatDate(photo.date);
   renderMapPlacePicker();

@@ -80,7 +80,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="mapAssignmentPreview"/);
   assert.match(appHtml, /id="mapAssignmentPreview"[\s\S]*?<img id="mapAssignmentImage"[^>]*\/>\s*<\/button>/);
   assert.doesNotMatch(appHtml, /id="mapAssignmentOpenPhoto"/);
-  assert.match(appHtml, /id="mapAssignmentChoosePlace"[^>]*>Из сохранённых<\/button>/);
+  assert.match(appHtml, /id="mapAssignmentChoosePlace"[^>]*>Места<\/button>/);
   assert.match(appHtml, /id="mapPhotoPreview"[\s\S]*?<img id="mapPhotoImage"[^>]*\/>\s*<\/button>/);
   assert.doesNotMatch(appHtml, /id="mapPhotoOpen"/);
   assert.match(appHtml, /id="mapPointDelete"/);
@@ -99,7 +99,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /href="\/styles\.css\?v=103"/);
   assert.match(appHtml, /src="\/map\.js\?v=9"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
-  assert.match(appHtml, /src="\/app\.js\?v=90"/);
+  assert.match(appHtml, /src="\/app\.js\?v=91"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -192,6 +192,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /suggestionsButton:\s*viewerLocationSuggestionsToggle/);
   assert.doesNotMatch(appScript, /viewerLocationPlaceSearch\?\.showSuggestions\(\)/);
   assert.match(appScript, /mapPlaceSuggestionsToggle\.addEventListener\('click'/);
+  assert.match(appScript, /mapPlacePickerSuggestionsVisible = context === 'assignment'/);
   assert.match(appScript, /mapPlaceSuggestionsToggle\.disabled = !availableSuggestionSections\.length/);
   assert.match(appScript, /activeMapRelatedPlaces = savedPlace \? \[place\] : \[\]/);
   assert.match(appScript, /linkSelectedPhotoToPlace/);
