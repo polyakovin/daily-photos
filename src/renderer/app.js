@@ -2203,6 +2203,7 @@ function renderMapPhotoCard() {
   mapPointRename.disabled = mapPlaceSaving;
   mapPointDelete.hidden = false;
   mapPointDelete.textContent = relatedPlace ? 'Удалить место' : 'Убрать с карты';
+  mapPointDelete.title = `${mapPointDelete.textContent} (Delete / ⌫)`;
   mapPointDelete.disabled = mapPointDeleting;
   mapPhotoCard.hidden = false;
 }
@@ -2253,6 +2254,7 @@ function renderMapPlaceCard() {
   mapPointRename.disabled = mapPlaceSaving;
   mapPointDelete.hidden = false;
   mapPointDelete.textContent = 'Удалить место';
+  mapPointDelete.title = 'Удалить место (Delete / ⌫)';
   mapPointDelete.disabled = mapPointDeleting;
   mapPhotoCard.hidden = false;
 }
@@ -4885,6 +4887,24 @@ document.addEventListener('keydown', (event) => {
   const target = event.target;
   const isEditableTarget = target instanceof HTMLElement
     && (target.matches('input, select, textarea') || target.isContentEditable);
+
+  if (['Delete', 'Backspace'].includes(event.key)
+      && !event.metaKey
+      && !event.ctrlKey
+      && !event.altKey
+      && !isEditableTarget
+      && !mapView.hidden
+      && !mapPhotoCard.hidden
+      && !mapPointDelete.hidden
+      && !mapPointDelete.disabled
+      && mapAssignment.hidden
+      && mapPlaceEditor.hidden
+      && !mapPhotoPickerDialog.open
+      && !mapPlacePickerDialog.open) {
+    event.preventDefault();
+    void deleteActiveMapPoint();
+    return;
+  }
 
   if (event.code === 'KeyM'
       && !event.metaKey

@@ -78,6 +78,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="mapPlaceAttachPhoto"/);
   assert.match(appHtml, /id="mapPointRename"[^>]*hidden/);
   assert.match(appHtml, /id="mapPhotoChoosePlace"[^>]*aria-keyshortcuts="M"/);
+  assert.match(appHtml, /id="mapPointDelete"[^>]*aria-keyshortcuts="Delete Backspace"/);
   assert.match(appHtml, /id="mapAssignmentPreview"/);
   assert.match(appHtml, /id="mapAssignmentPreview"[\s\S]*?<img id="mapAssignmentImage"[^>]*\/>\s*<\/button>/);
   assert.doesNotMatch(appHtml, /id="mapAssignmentOpenPhoto"/);
@@ -97,10 +98,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=103"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=104"/);
   assert.match(appHtml, /src="\/map\.js\?v=10"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
-  assert.match(appHtml, /src="\/app\.js\?v=92"/);
+  assert.match(appHtml, /src="\/app\.js\?v=93"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -147,6 +148,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.geo-map-fan-photo:hover/);
   assert.match(styles, /opacity:\s*0[\s\S]*?translate3d\(var\(--fan-x\),\s*var\(--fan-y\),\s*0\)/);
   assert.match(styles, /#mapPointDelete/);
+  assert.match(styles, /\.map-photo-actions \[data-shortcut\]:not\(\[hidden\]\)::after/);
   assert.match(styles, /\.map-place-picker-grid/);
   assert.match(styles, /\.map-place-picker-section/);
   assert.match(styles, /\.map-place-picker-item\.is-empty/);
@@ -185,6 +187,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /method: mapPlaceEditingPlace \? 'PATCH' : 'POST'/);
   assert.match(appScript, /hidePhotoOnMap/);
   assert.match(appScript, /deleteActiveMapPoint/);
+  assert.match(appScript, /\['Delete', 'Backspace'\]\.includes\(event\.key\)/);
   assert.match(appScript, /mapPlacePickerCandidates/);
   assert.match(appScript, /referencePlaceSuggestions/);
   assert.match(appScript, /function placeSuggestionSections/);
