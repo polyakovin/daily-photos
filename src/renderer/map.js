@@ -354,6 +354,7 @@
       this.lastWheelZoomAt = 0;
       this.wheelResetTimer = 0;
       this.previewKey = null;
+      this.suppressMarkerClick = false;
       this.playbackRoute = [];
       this.playbackActivePoint = null;
       this.playbackPreviewData = null;
@@ -580,19 +581,26 @@
     }
 
     handlePointerDown(event) {
-      if (event.button !== 0 || event.target.closest('.geo-map-marker')) return;
+      if (event.button !== 0) return;
       const center = this.centerWorld();
       const start = this.pixelFromClient(event.clientX, event.clientY);
+      const startedOnMarker = Boolean(event.target.closest?.('.geo-map-marker'));
+      this.suppressMarkerClick = false;
       this.pointer = {
         id: event.pointerId,
         startX: start.x,
         startY: start.y,
         centerX: center.x,
         centerY: center.y,
+        startedOnMarker,
+        captured: false,
         moved: false
       };
       this.container.classList.add('is-panning');
-      this.container.setPointerCapture?.(event.pointerId);
+      if (!startedOnMarker && this.container.setPointerCapture) {
+        this.container.setPointerCapture(event.pointerId);
+        this.pointer.captured = true;
+      }
     }
 
     handlePointerMove(event) {
@@ -600,7 +608,16 @@
       const current = this.pixelFromClient(event.clientX, event.clientY);
       const deltaX = current.x - this.pointer.startX;
       const deltaY = current.y - this.pointer.startY;
-      if (Math.hypot(deltaX, deltaY) > 4) this.pointer.moved = true;
+      if (Math.hypot(deltaX, deltaY) > 4) {
+        this.pointer.moved = true;
+        if (this.pointer.startedOnMarker) {
+          this.hidePointPreview();
+          if (!this.pointer.captured && this.container.setPointerCapture) {
+            this.container.setPointerCapture(event.pointerId);
+            this.pointer.captured = true;
+          }
+        }
+      }
       this.center = unproject(
         this.pointer.centerX - deltaX,
         this.pointer.centerY - deltaY,
@@ -614,14 +631,17 @@
       const pointer = this.pointer;
       this.pointer = null;
       this.container.classList.remove('is-panning');
-      if (this.container.hasPointerCapture?.(event.pointerId)) {
+      if (pointer.captured && this.container.hasPointerCapture?.(event.pointerId)) {
         this.container.releasePointerCapture(event.pointerId);
       }
       if (!pointer.moved) {
         this.center = unproject(pointer.centerX, pointer.centerY, this.zoom);
         this.scheduleRender();
-        this.options.onMapClick?.(this.locationAtPixel(pointer.startX, pointer.startY));
+        if (!pointer.startedOnMarker) {
+          this.options.onMapClick?.(this.locationAtPixel(pointer.startX, pointer.startY));
+        }
       } else {
+        this.suppressMarkerClick = pointer.startedOnMarker;
         this.options.onViewChange?.(this.getCenter());
       }
     }
@@ -725,13 +745,17 @@
       const hit = document.createElement('button');
       hit.type = 'button';
       hit.className = 'geo-map-marker-hit';
-      hit.addEventListener('pointerdown', (event) => event.stopPropagation());
       hit.addEventListener('pointerenter', () => this.showPointPreview(marker));
       hit.addEventListener('pointerleave', () => this.hidePointPreview(key));
       hit.addEventListener('focus', () => this.showPointPreview(marker));
       hit.addEventListener('blur', () => this.hidePointPreview(key));
       hit.addEventListener('click', (event) => {
         event.stopPropagation();
+        if (this.suppressMarkerClick) {
+          this.suppressMarkerClick = false;
+          event.preventDefault();
+          return;
+        }
         const group = marker.photoDayGroup;
         if (!group) return;
         const uniqueLocations = new Set(group.points.map(mapCoordinateKey));

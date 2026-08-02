@@ -96,8 +96,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=99"/);
-  assert.match(appHtml, /src="\/map\.js\?v=5"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=100"/);
+  assert.match(appHtml, /src="\/map\.js\?v=6"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
   assert.match(appHtml, /src="\/app\.js\?v=86"/);
   assert.match(appHtml, /id="aboutButton"/);
@@ -234,6 +234,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(mapScript, /function photoStackPoints\(points,\s*random = Math\.random\)/);
   assert.match(mapScript, /setPlaybackRoute\(points,/);
   assert.match(mapScript, /renderPlaybackRoute\(\)/);
+  assert.match(mapScript, /startedOnMarker/);
+  assert.match(mapScript, /suppressMarkerClick/);
+  assert.doesNotMatch(mapScript, /event\.target\.closest\('\.geo-map-marker'\)\) return/);
+  assert.doesNotMatch(mapScript, /hit\.addEventListener\('pointerdown', \(event\) => event\.stopPropagation\(\)\)/);
   assert.match(mapScript, /function photoFanLayout\(total,\s*index\)/);
   assert.match(mapScript, /className = 'geo-map-fan-photo'/);
   assert.match(mapScript, /MAX_PHOTO_STACK_SIZE = 30/);

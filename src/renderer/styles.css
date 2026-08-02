@@ -1534,6 +1534,7 @@ body.presentation-mode .timeline-item img.is-presentation-blurred { filter: blur
   transition: box-shadow 140ms ease, border-color 140ms ease, background 140ms ease;
 }
 .geo-map-marker:not(.is-cluster) .geo-map-marker-hit::after { content: ''; width: 6px; height: 6px; background: #efb84c; border-radius: 50%; }
+.geo-map.is-panning .geo-map-marker-hit { cursor: grabbing; }
 .geo-map-marker.is-cluster { width: 36px; height: 36px; }
 .geo-map-marker.is-cluster .geo-map-marker-hit { background: #2e6552; font-size: 11px; }
 .geo-map-marker.is-reference .geo-map-marker-hit { background: #b26b3f; }

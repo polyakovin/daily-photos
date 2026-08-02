@@ -4,6 +4,7 @@ const {
   buildMapPlaybackFrames,
   clusterProjectedPoints,
   distinctMapPointCount,
+  InteractiveMap,
   linkedReferencePlaces,
   mapPlaybackDelay,
   MAX_ZOOM,
@@ -70,6 +71,79 @@ test('marker clusters use a world grid that does not depend on viewport movement
     second.map(({ key, points: grouped }) => [key, grouped.map((point) => point.id)])
   );
   assert.equal(first.find((group) => group.points.some((point) => point.id === 'a')).points.length, 2);
+});
+
+function runMapPointerGesture({ startedOnMarker, moved }) {
+  const classes = new Set();
+  let capturedPointerId = null;
+  let mapClickCount = 0;
+  let viewChangeCount = 0;
+  const map = Object.assign(Object.create(InteractiveMap.prototype), {
+    center: { latitude: 0, longitude: 0 },
+    zoom: 4,
+    suppressMarkerClick: false,
+    container: {
+      classList: {
+        add: (name) => classes.add(name),
+        remove: (name) => classes.delete(name)
+      },
+      setPointerCapture: (pointerId) => { capturedPointerId = pointerId; },
+      hasPointerCapture: (pointerId) => capturedPointerId === pointerId,
+      releasePointerCapture: () => { capturedPointerId = null; }
+    },
+    options: {
+      onMapClick: () => { mapClickCount += 1; },
+      onViewChange: () => { viewChangeCount += 1; }
+    },
+    centerWorld: () => ({ x: 1200, y: 900 }),
+    pixelFromClient: (x, y) => ({ x, y }),
+    hidePointPreview: () => { map.previewHidden = true; },
+    locationAtPixel: () => ({ latitude: 1, longitude: 2 }),
+    scheduleRender: () => {}
+  });
+  const pointerId = 7;
+  map.handlePointerDown({
+    button: 0,
+    pointerId,
+    clientX: 100,
+    clientY: 100,
+    target: { closest: () => startedOnMarker ? {} : null }
+  });
+  const capturedOnDown = capturedPointerId === pointerId;
+  if (moved) {
+    map.handlePointerMove({ pointerId, clientX: 138, clientY: 124 });
+  }
+  map.handlePointerUp({ pointerId });
+  return {
+    capturedOnDown,
+    center: map.center,
+    mapClickCount,
+    previewHidden: Boolean(map.previewHidden),
+    suppressMarkerClick: map.suppressMarkerClick,
+    viewChangeCount
+  };
+}
+
+test('dragging from a marker pans the map like dragging from empty space', () => {
+  const fromMarker = runMapPointerGesture({ startedOnMarker: true, moved: true });
+  const fromMap = runMapPointerGesture({ startedOnMarker: false, moved: true });
+
+  assert.deepEqual(fromMarker.center, fromMap.center);
+  assert.equal(fromMarker.capturedOnDown, false);
+  assert.equal(fromMap.capturedOnDown, true);
+  assert.equal(fromMarker.previewHidden, true);
+  assert.equal(fromMarker.suppressMarkerClick, true);
+  assert.equal(fromMarker.mapClickCount, 0);
+  assert.equal(fromMarker.viewChangeCount, 1);
+});
+
+test('pressing a marker without moving keeps the marker click available', () => {
+  const result = runMapPointerGesture({ startedOnMarker: true, moved: false });
+
+  assert.equal(result.capturedOnDown, false);
+  assert.equal(result.mapClickCount, 0);
+  assert.equal(result.suppressMarkerClick, false);
+  assert.equal(result.viewChangeCount, 0);
 });
 
 test('map playback builds one chronological frame per located photo day', () => {
