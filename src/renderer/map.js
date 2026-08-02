@@ -82,6 +82,21 @@
       : '';
   }
 
+  function markerCellSize(zoom) {
+    return zoom >= 13 ? 42 : zoom >= 7 ? 48 : 56;
+  }
+
+  function mapClusterKey(value, zoom, cellSize = markerCellSize(zoom)) {
+    const coordinates = displayCoordinates(value);
+    if (!coordinates) return '';
+    const world = project(coordinates.latitude, coordinates.longitude, zoom);
+    return `${zoom}:${Math.floor(world.x / cellSize)}:${Math.floor(world.y / cellSize)}`;
+  }
+
+  function maxZoomClusterKey(value) {
+    return mapClusterKey(value, MAX_ZOOM);
+  }
+
   function linkedReferencePlaces(places, photos) {
     const linkedReferenceIds = new Set(
       (Array.isArray(photos) ? photos : [])
@@ -93,37 +108,53 @@
   }
 
   function referencePlaceSuggestions(places, photos, limit = 6, recentPlaceIds = []) {
-    const stats = (Array.isArray(places) ? places : []).map((place) => ({
-      place,
-      photoCount: 0,
-      latestDate: ''
-    }));
+    const stats = (Array.isArray(places) ? places : []).map((place, index) => ({ place, index }));
     const statsById = new Map();
-    const statsByCoordinates = new Map();
+    const groups = [];
+    const groupsByCluster = new Map();
+    const groupsByStat = new Map();
     for (const stat of stats) {
       if (stat.place?.id) statsById.set(stat.place.id, stat);
-      const coordinateKey = mapCoordinateKey(stat.place);
-      if (!coordinateKey) continue;
-      const coordinateStats = statsByCoordinates.get(coordinateKey) || [];
-      coordinateStats.push(stat);
-      statsByCoordinates.set(coordinateKey, coordinateStats);
+      const clusterKey = maxZoomClusterKey(stat.place);
+      let group = clusterKey ? groupsByCluster.get(clusterKey) : null;
+      if (!group) {
+        group = {
+          key: clusterKey || `place:${stat.place?.id || stat.index}`,
+          stats: [],
+          photoCount: 0,
+          latestDate: ''
+        };
+        groups.push(group);
+        if (clusterKey) groupsByCluster.set(clusterKey, group);
+      }
+      group.stats.push(stat);
+      groupsByStat.set(stat, group);
     }
 
     for (const photo of Array.isArray(photos) ? photos : []) {
-      const matchingStats = new Set();
+      const matchingGroups = new Set();
       const linkedStat = statsById.get(photo?.locationReferenceId);
-      if (linkedStat) matchingStats.add(linkedStat);
-      const coordinateKey = mapCoordinateKey(photo);
-      for (const stat of statsByCoordinates.get(coordinateKey) || []) matchingStats.add(stat);
-      for (const stat of matchingStats) {
-        stat.photoCount += 1;
+      if (linkedStat) matchingGroups.add(groupsByStat.get(linkedStat));
+      const clusterKey = maxZoomClusterKey(photo);
+      const coordinateGroup = groupsByCluster.get(clusterKey);
+      if (coordinateGroup) matchingGroups.add(coordinateGroup);
+      for (const group of matchingGroups) {
+        group.photoCount += 1;
         const date = typeof photo?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(photo.date)
           ? photo.date
           : '';
-        if (date > stat.latestDate) stat.latestDate = date;
+        if (date > group.latestDate) group.latestDate = date;
       }
     }
 
+    const suggestionFromStat = (stat) => {
+      const group = groupsByStat.get(stat);
+      return {
+        place: stat.place,
+        photoCount: group.photoCount,
+        latestDate: group.latestDate
+      };
+    };
     const compareNames = (a, b) => (
       String(a.place?.name || '').localeCompare(String(b.place?.name || ''), 'ru')
       || String(a.place?.country || '').localeCompare(String(b.place?.country || ''), 'ru')
@@ -131,17 +162,26 @@
     const safeLimit = Math.max(0, Math.trunc(Number(limit) || 0));
     const recent = [];
     const recentIds = new Set();
+    const recentGroups = new Set();
     for (const placeId of Array.isArray(recentPlaceIds) ? recentPlaceIds : []) {
       if (recentIds.has(placeId)) continue;
       recentIds.add(placeId);
       const stat = statsById.get(placeId);
-      if (stat) recent.push(stat);
+      const group = groupsByStat.get(stat);
+      if (group && !recentGroups.has(group.key)) {
+        recentGroups.add(group.key);
+        recent.push(suggestionFromStat(stat));
+      }
       if (recent.length >= safeLimit) break;
     }
     return {
-      all: [...stats].sort(compareNames),
+      all: stats.map(suggestionFromStat).sort(compareNames),
       recent,
-      popular: stats.filter(({ photoCount }) => photoCount > 0).sort((a, b) => (
+      popular: groups.filter(({ photoCount }) => photoCount > 0).map((group) => ({
+        place: group.stats[0].place,
+        photoCount: group.photoCount,
+        latestDate: group.latestDate
+      })).sort((a, b) => (
         b.photoCount - a.photoCount
         || compareNames(a, b)
       )).slice(0, safeLimit)
@@ -200,6 +240,12 @@
       worldX: group.worldX / group.points.length,
       worldY: group.worldY / group.points.length
     }));
+  }
+
+  function distinctMapPointCount(points) {
+    return new Set(
+      (Array.isArray(points) ? points : []).map(maxZoomClusterKey).filter(Boolean)
+    ).size;
   }
 
   function photoStackPoints(points, random = Math.random) {
@@ -719,7 +765,7 @@
 
     renderMarkers() {
       const viewport = this.viewport();
-      const cellSize = this.zoom >= 13 ? 42 : this.zoom >= 7 ? 48 : 56;
+      const cellSize = markerCellSize(this.zoom);
       const visibleKeys = new Set();
       for (const group of clusterProjectedPoints(this.points, this.zoom, cellSize)) {
         const screen = this.screenPointFromWorld(group.worldX, group.worldY);
@@ -800,6 +846,7 @@
     MAX_ZOOM,
     MIN_ZOOM,
     clusterProjectedPoints,
+    distinctMapPointCount,
     linkedReferencePlaces,
     mapCoordinateKey,
     normalizeCoordinates,

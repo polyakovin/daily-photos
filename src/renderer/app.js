@@ -16,6 +16,7 @@ const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
 const { suggestCalendarImportDate } = window.PhotoDayImportDate;
 const { createDatePicker } = window.PhotoDayDatePicker;
 const {
+  distinctMapPointCount,
   InteractiveMap,
   linkedReferencePlaces,
   mapCoordinateKey,
@@ -1672,10 +1673,6 @@ function locatedPhotoCount() {
   return photos.reduce((count, photo) => count + Number(photoHasLocation(photo)), 0);
 }
 
-function distinctPlaceCount(points) {
-  return new Set(points.map(mapCoordinateKey).filter(Boolean)).size;
-}
-
 function referenceSourceLabel(place) {
   const sources = new Set(referencePlaceVariants(place).map((variant) => variant.source));
   if (sources.has('home-office') && sources.has('organic-maps')) {
@@ -1782,7 +1779,7 @@ function renderMapLocations({ fit = false } = {}) {
   const withoutLocation = photos.filter((photo) => (
     !photoHasLocation(photo) && !photo.locationHidden
   )).length;
-  const places = distinctPlaceCount(points);
+  const places = distinctMapPointCount(points);
 
   mapSummary.innerHTML = `<strong>${places.toLocaleString('ru-RU')} ${pluralize(places, ['место', 'места', 'мест'])}</strong>${locatedPhotos.length.toLocaleString('ru-RU')} ${pluralize(locatedPhotos.length, ['фотография', 'фотографии', 'фотографий'])}`;
   mapAssignButton.disabled = withoutLocation === 0

@@ -2,7 +2,9 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   clusterProjectedPoints,
+  distinctMapPointCount,
   linkedReferencePlaces,
+  MAX_ZOOM,
   normalizeCoordinates,
   normalizeLongitude,
   parseCoordinateQuery,
@@ -66,6 +68,50 @@ test('marker clusters use a world grid that does not depend on viewport movement
     second.map(({ key, points: grouped }) => [key, grouped.map((point) => point.id)])
   );
   assert.equal(first.find((group) => group.points.some((point) => point.id === 'a')).points.length, 2);
+});
+
+test('points joined at maximum zoom count as one place and share suggestion frequency', () => {
+  const place = {
+    id: 'moscow-center',
+    name: 'Центр Москвы',
+    latitude: 55.7558,
+    longitude: 37.6173
+  };
+  const nearbyPhoto = {
+    id: 'nearby-photo',
+    date: '2026-02-01',
+    latitude: 55.7559,
+    longitude: 37.6174,
+    mapPointType: 'photo'
+  };
+  const nearbyPlace = {
+    id: 'red-square',
+    name: 'Красная площадь',
+    latitude: nearbyPhoto.latitude,
+    longitude: nearbyPhoto.longitude
+  };
+  const distantPhoto = {
+    id: 'distant-photo',
+    date: '2026-03-01',
+    latitude: 55.7658,
+    longitude: 37.6273,
+    mapPointType: 'photo'
+  };
+
+  assert.equal(clusterProjectedPoints([place, nearbyPhoto], MAX_ZOOM, 42).length, 1);
+  assert.equal(distinctMapPointCount([place, nearbyPlace, nearbyPhoto, distantPhoto]), 2);
+  const suggestions = referencePlaceSuggestions([place, nearbyPlace], [
+    { ...place, id: 'exact-photo', date: '2026-01-01', mapPointType: 'photo' },
+    nearbyPhoto,
+    distantPhoto
+  ]);
+  assert.deepEqual(
+    suggestions.popular.map(({ place: suggestionPlace, photoCount }) => ({
+      id: suggestionPlace.id,
+      photoCount
+    })),
+    [{ id: 'moscow-center', photoCount: 2 }]
+  );
 });
 
 test('map replaces a selected reference marker with the linked photo marker', () => {
