@@ -8,6 +8,7 @@
   const MIN_ZOOM = 1;
   const MAX_ZOOM = 18;
   const MAP_COORDINATE_DIGITS = 5;
+  const MAX_PHOTO_STACK_SIZE = 30;
   const WHEEL_ZOOM_THRESHOLD = 90;
   const WHEEL_ZOOM_COOLDOWN = 150;
 
@@ -201,7 +202,7 @@
     }));
   }
 
-  function photoStackPoints(points) {
+  function photoStackPoints(points, random = Math.random) {
     const locatedPoints = (Array.isArray(points) ? points : [])
       .filter((point) => pointCoordinates(point));
     const photos = locatedPoints
@@ -214,7 +215,20 @@
         || String(a.id || '').localeCompare(String(b.id || ''))
     ));
     if (photos.length < 2) return [];
-    return photos;
+    if (photos.length <= MAX_PHOTO_STACK_SIZE) return photos;
+
+    const shuffled = [...photos];
+    for (let index = 0; index < MAX_PHOTO_STACK_SIZE; index += 1) {
+      const remaining = shuffled.length - index;
+      const randomValue = Number(random());
+      const offset = Math.min(
+        remaining - 1,
+        Math.max(0, Math.floor((Number.isFinite(randomValue) ? randomValue : 0) * remaining))
+      );
+      const selectedIndex = index + offset;
+      [shuffled[index], shuffled[selectedIndex]] = [shuffled[selectedIndex], shuffled[index]];
+    }
+    return shuffled.slice(0, MAX_PHOTO_STACK_SIZE);
   }
 
   function photoFanLayout(total, index) {
@@ -364,6 +378,7 @@
 
     setPoints(points, { fit = false } = {}) {
       this.points = (Array.isArray(points) ? points : []).filter(pointCoordinates);
+      for (const marker of this.markerNodes.values()) marker.photoDayStackPhotos = null;
       if (fit) this.fitPoints(this.points);
       else this.scheduleRender();
     }
@@ -718,7 +733,8 @@
         const marker = this.markerNode(group.key);
         const count = group.points.length;
         const referenceOnly = group.points.every((point) => point.mapPointType === 'reference');
-        const stackPhotos = photoStackPoints(group.points);
+        const stackPhotos = marker.photoDayStackPhotos || photoStackPoints(group.points);
+        marker.photoDayStackPhotos = stackPhotos;
         marker.className = `geo-map-marker${count > 1 ? ' is-cluster' : ''}${referenceOnly ? ' is-reference' : ''}${stackPhotos.length ? ' has-photo-stack' : ''}`;
         marker.style.transform = `translate3d(${screen.x}px, ${screen.y}px, 0) translate(-50%, -50%)`;
         this.renderMarkerContent(marker, group, count, stackPhotos);

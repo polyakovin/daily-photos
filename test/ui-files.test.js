@@ -215,9 +215,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /fetch\('\/api\/app-info'\)/);
   assert.match(appScript, /function renderAboutInfo/);
 
-  assert.match(mapScript, /function photoStackPoints\(points\)/);
+  assert.match(mapScript, /function photoStackPoints\(points,\s*random = Math\.random\)/);
   assert.match(mapScript, /function photoFanLayout\(total,\s*index\)/);
   assert.match(mapScript, /className = 'geo-map-fan-photo'/);
-  assert.match(mapScript, /return photos;/);
-  assert.doesNotMatch(mapScript, /return photos\.slice/);
+  assert.match(mapScript, /MAX_PHOTO_STACK_SIZE = 30/);
 });

@@ -204,7 +204,7 @@ test('place suggestions use selection history for recent and photo counts for po
   );
 });
 
-test('photo stacks include every photo in exact locations and zoomed-out clusters', () => {
+test('photo stacks include every photo below the preview limit', () => {
   const sameLocation = [
     {
       id: 'reference',
@@ -263,6 +263,27 @@ test('photo stacks include every photo in exact locations and zoomed-out cluster
       }
     ]).map((point) => point.id),
     ['nearby', 'newer', 'older']
+  );
+});
+
+test('photo stacks show at most 30 randomly selected photos without duplicates', () => {
+  const photos = Array.from({ length: 40 }, (_, index) => ({
+    id: `photo-${index}`,
+    date: `2026-01-${String(index + 1).padStart(2, '0')}`,
+    latitude: 55.7558,
+    longitude: 37.6173,
+    mapPointType: 'photo',
+    thumbnailSrc: `/photo-${index}.jpg`
+  }));
+
+  const firstSample = photoStackPoints(photos, () => 0);
+  const lastSample = photoStackPoints(photos, () => 0.999999);
+
+  assert.equal(firstSample.length, 30);
+  assert.equal(new Set(firstSample.map((photo) => photo.id)).size, 30);
+  assert.notDeepEqual(
+    firstSample.map((photo) => photo.id),
+    lastSample.map((photo) => photo.id)
   );
 });
 
