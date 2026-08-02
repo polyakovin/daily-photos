@@ -143,6 +143,20 @@
       .filter((place) => linkedReferenceIds.has(place.id));
   }
 
+  function relatedReferencePlaces(places, photos) {
+    const photoValues = Array.isArray(photos) ? photos : [];
+    const linkedReferenceIds = new Set(
+      photoValues.map((photo) => photo?.locationReferenceId).filter(Boolean)
+    );
+    const photoClusterKeys = new Set(
+      photoValues.map(maxZoomClusterKey).filter(Boolean)
+    );
+    return (Array.isArray(places) ? places : []).filter((place) => (
+      linkedReferenceIds.has(place?.id)
+      || photoClusterKeys.has(maxZoomClusterKey(place))
+    ));
+  }
+
   function referencePlaceSuggestions(places, photos, limit = 6, recentPlaceIds = []) {
     const stats = (Array.isArray(places) ? places : []).map((place, index) => ({ place, index }));
     const statsById = new Map();
@@ -1096,6 +1110,7 @@
     photoStackPoints,
     project,
     referencePlaceSuggestions,
+    relatedReferencePlaces,
     unproject,
     unlocatedPhotos,
     visibleReferencePoints

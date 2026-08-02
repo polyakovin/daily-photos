@@ -206,8 +206,8 @@
           <form class="map-place-editor" id="mapPlaceEditor" autocomplete="off" hidden>
             <div class="map-place-editor-heading">
               <div>
-                <small>Новое место</small>
-                <strong>Поставьте точку на карте</strong>
+                <small id="mapPlaceEditorKicker">Новое место</small>
+                <strong id="mapPlaceEditorTitle">Поставьте точку на карте</strong>
               </div>
               <button id="mapPlaceCancel" type="button" aria-label="Отменить добавление места">×</button>
             </div>
@@ -252,6 +252,7 @@
                 hidden
               >Выбрать место</button>
               <button id="mapPlaceAttachPhoto" type="button" hidden>Привязать фотографию</button>
+              <button id="mapPointRename" type="button" hidden>Переименовать</button>
               <button id="mapPointDelete" type="button" hidden>Удалить место</button>
               <button id="mapPhotoNext" type="button" aria-label="Следующая фотография">→</button>
             </div>
@@ -758,10 +759,10 @@
     </dialog>
 
     <script src="/life-range.js?v=1" defer></script>
-    <script src="/map.js?v=9" defer></script>
+    <script src="/map.js?v=10" defer></script>
     <script src="/photo-import-date.js?v=1" defer></script>
     <script src="/date-picker.js?v=7" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=91" defer></script>
+    <script src="/app.js?v=92" defer></script>
   </body>
 </html>

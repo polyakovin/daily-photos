@@ -19,12 +19,12 @@ const {
   buildMapPlaybackFrames,
   distinctMapPointCount,
   InteractiveMap,
-  linkedReferencePlaces,
   mapCoordinateKey,
   mapPlaybackDelay,
   normalizeCoordinates: normalizeMapCoordinates,
   parseCoordinateQuery,
   referencePlaceSuggestions,
+  relatedReferencePlaces,
   unlocatedPhotos,
   visibleReferencePoints
 } = window.PhotoDayMap;
@@ -72,6 +72,8 @@ const mapAssignmentChoosePlace = document.querySelector('#mapAssignmentChoosePla
 const mapAssignmentSkip = document.querySelector('#mapAssignmentSkip');
 const mapAssignmentDone = document.querySelector('#mapAssignmentDone');
 const mapPlaceEditor = document.querySelector('#mapPlaceEditor');
+const mapPlaceEditorKicker = document.querySelector('#mapPlaceEditorKicker');
+const mapPlaceEditorTitle = document.querySelector('#mapPlaceEditorTitle');
 const mapPlaceName = document.querySelector('#mapPlaceName');
 const mapPlaceCountry = document.querySelector('#mapPlaceCountry');
 const mapPlaceCoordinates = document.querySelector('#mapPlaceCoordinates');
@@ -85,6 +87,7 @@ const mapPhotoDate = document.querySelector('#mapPhotoDate');
 const mapPhotoSource = document.querySelector('#mapPhotoSource');
 const mapPhotoChoosePlace = document.querySelector('#mapPhotoChoosePlace');
 const mapPlaceAttachPhoto = document.querySelector('#mapPlaceAttachPhoto');
+const mapPointRename = document.querySelector('#mapPointRename');
 const mapPointDelete = document.querySelector('#mapPointDelete');
 const mapPhotoPickerDialog = document.querySelector('#mapPhotoPickerDialog');
 const mapPhotoPickerPlace = document.querySelector('#mapPhotoPickerPlace');
@@ -259,6 +262,8 @@ let mapAssignmentImageFallbackTimer = 0;
 let mapAssignmentMode = 'batch';
 let mapPlaceDraft = null;
 let mapPlaceSaving = false;
+let mapPlaceEditorMode = 'create';
+let mapPlaceEditingPlace = null;
 let activeMapPhotos = [];
 let activeMapPhotoIndex = 0;
 let activeMapPlaces = [];
@@ -1726,6 +1731,16 @@ function sortedReferencePlaces(places) {
   ));
 }
 
+function relatedPlacesForPhoto(photo) {
+  return sortedReferencePlaces(
+    relatedReferencePlaces(locationReferencePlaces, photo ? [photo] : [])
+  );
+}
+
+function referencePlaceLabel(place) {
+  return [place?.name, place?.country].filter(Boolean).join(' · ');
+}
+
 function locationFromReferencePlace(place) {
   if (!place) return null;
   return normalizeLocationDraft({
@@ -1763,13 +1778,18 @@ function mapPointPreview(group) {
     .sort((a, b) => b.date.localeCompare(a.date));
   if (groupPhotos.length) {
     const photo = groupPhotos[0];
+    const relatedPlace = relatedPlacesForPhoto(photo)[0];
+    const countLabel = groupPhotos.length > 1
+      ? `${groupPhotos.length.toLocaleString('ru-RU')} ${pluralize(groupPhotos.length, ['фотография', 'фотографии', 'фотографий'])}`
+      : '';
     return {
       src: photo.thumbnailSrc || photo.src,
       alt: `Фото за ${formatDate(photo.date)}`,
       title: formatDate(photo.date),
-      subtitle: groupPhotos.length > 1
-        ? `${groupPhotos.length.toLocaleString('ru-RU')} ${pluralize(groupPhotos.length, ['фотография', 'фотографии', 'фотографий'])}`
-        : photoLocationLabel(photo)
+      subtitle: [
+        countLabel,
+        relatedPlace ? referencePlaceLabel(relatedPlace) : photoLocationLabel(photo)
+      ].filter(Boolean).join(' · ')
     };
   }
   return referencePointPreview(group);
@@ -1959,13 +1979,18 @@ function startMapPlaceCreation() {
   ensureMap();
   if (mapAssignmentPhotos.length) return;
   mapPhotoCard.hidden = true;
+  mapPlaceEditorMode = 'create';
+  mapPlaceEditingPlace = null;
   mapPlaceDraft = null;
   mapPlaceSaving = false;
+  mapPlaceEditorKicker.textContent = 'Новое место';
+  mapPlaceEditorTitle.textContent = 'Поставьте точку на карте';
   mapPlaceName.value = '';
   mapPlaceCountry.value = '';
   mapPlaceCoordinates.textContent = 'Нажмите на карте или найдите адрес';
   mapPlaceError.hidden = true;
   mapPlaceSave.disabled = true;
+  mapPlaceSave.textContent = 'Сохранить место';
   mapPlaceEditor.hidden = false;
   mapStageWrap.classList.add('is-adding-place');
   mapController.setSelection(null);
@@ -1976,15 +2001,50 @@ function startMapPlaceCreation() {
   mapPlaceName.focus();
 }
 
+function startMapPointRename() {
+  if (mapAssignmentPhotos.length || mapPlaceSaving || mapPointDeleting) return;
+  if (mapPlaybackActive) stopMapPlayback({ render: false });
+  ensureMap();
+  const place = activeMapPlaceForEditing();
+  const photo = activeMapPhotos[activeMapPhotoIndex];
+  const coordinates = normalizeMapCoordinates(place || photo);
+  if (!coordinates) return;
+  const namedPhoto = activeMapPhotos.find((candidate) => candidate.locationPlace) || photo;
+  mapPlaceEditorMode = place ? 'rename' : 'name-photo';
+  mapPlaceEditingPlace = place || null;
+  mapPlaceDraft = coordinates;
+  mapPlaceSaving = false;
+  mapPlaceEditorKicker.textContent = place ? 'Сохранённое место' : 'Место с фотографиями';
+  mapPlaceEditorTitle.textContent = place ? 'Измените название' : 'Назовите это место';
+  mapPlaceName.value = place?.name || namedPhoto?.locationPlace || '';
+  mapPlaceCountry.value = place?.country || namedPhoto?.locationCountry || '';
+  mapPlaceCoordinates.textContent = `${coordinates.latitude.toFixed(6)}, ${coordinates.longitude.toFixed(6)}`;
+  mapPlaceError.hidden = true;
+  mapPlaceSave.disabled = !mapPlaceName.value.trim();
+  mapPlaceSave.textContent = place ? 'Сохранить название' : 'Назвать место';
+  mapPlaceEditor.hidden = false;
+  mapStageWrap.classList.add('is-adding-place');
+  mapController.setSelection(coordinates);
+  mapController.setSelectionMode(false);
+  mapAddPlaceButton.disabled = true;
+  mapAssignButton.disabled = true;
+  mapPlaceName.focus();
+  mapPlaceName.select();
+}
+
 function finishMapPlaceCreation() {
   mapPlaceEditor.hidden = true;
   mapPlaceDraft = null;
   mapPlaceSaving = false;
+  mapPlaceEditorMode = 'create';
+  mapPlaceEditingPlace = null;
   mapStageWrap.classList.remove('is-adding-place');
   mapController?.setSelection(null);
   mapController?.setSelectionMode(false);
   mapLocationSearch?.clear();
   renderMapLocations();
+  if (activeMapPhotos.length) renderMapPhotoCard();
+  else if (activeMapPlaces.length) renderMapPlaceCard();
 }
 
 async function saveMapPlace() {
@@ -2000,10 +2060,17 @@ async function saveMapPlace() {
   mapPlaceSave.disabled = true;
   mapPlaceError.hidden = true;
   try {
-    const response = await fetch('/api/location-reference', {
-      method: 'POST',
+    const editingPlace = mapPlaceEditingPlace;
+    const editorMode = mapPlaceEditorMode;
+    const response = await fetch(editingPlace
+      ? `/api/location-reference/${encodeURIComponent(editingPlace.id)}`
+      : '/api/location-reference', {
+      method: mapPlaceEditingPlace ? 'PATCH' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: JSON.stringify(editingPlace ? {
+        name,
+        country: mapPlaceCountry.value.trim()
+      } : {
         ...mapPlaceDraft,
         name,
         country: mapPlaceCountry.value.trim()
@@ -2011,15 +2078,33 @@ async function saveMapPlace() {
     });
     const place = await response.json().catch(() => null);
     if (!response.ok) throw new Error(place?.error || 'Не удалось сохранить место');
-    locationReferencePlaces.push(place);
-    viewerLocationMap?.setPoints(mapPointCollections().points);
+    if (editingPlace) {
+      locationReferencePlaces = locationReferencePlaces.map((candidate) => (
+        candidate.id === place.id ? place : candidate
+      ));
+      activeMapPlaces = activeMapPlaces.map((candidate) => (
+        candidate.id === place.id ? place : candidate
+      ));
+      activeMapRelatedPlaces = activeMapRelatedPlaces.map((candidate) => (
+        candidate.id === place.id ? place : candidate
+      ));
+    } else {
+      locationReferencePlaces.push(place);
+    }
+    if (editorMode === 'create') {
+      activeMapPhotos = [];
+      activeMapRelatedPlaces = [];
+      activeMapPlaces = [place];
+      activeMapPlaceIndex = 0;
+    } else if (editorMode === 'name-photo') {
+      activeMapPlaces = [];
+      activeMapRelatedPlaces = sortedReferencePlaces(
+        relatedReferencePlaces(locationReferencePlaces, activeMapPhotos)
+      );
+    }
     finishMapPlaceCreation();
     mapController?.setCenter(place, Math.max(12, mapController.getCenter().zoom));
-    activeMapPhotos = [];
-    activeMapPlaces = [place];
-    activeMapPlaceIndex = 0;
-    renderMapLocations();
-    renderMapPlaceCard();
+    viewerLocationMap?.setPoints(mapPointCollections().points);
   } catch (error) {
     mapPlaceError.textContent = error.message;
     mapPlaceError.hidden = false;
@@ -2042,7 +2127,7 @@ function ensureMap() {
       if (mapAssignmentPhotos.length) {
         void assignCurrentPhotoToLocation(location);
       } else if (!mapPlaceEditor.hidden) {
-        setMapPlaceDraft(location);
+        if (mapPlaceEditorMode === 'create') setMapPlaceDraft(location);
       } else {
         mapController?.setSelection(null);
         mapController?.setHighlightedPoint(null);
@@ -2056,12 +2141,14 @@ function ensureMap() {
           locationFromReferencePlace(place) || normalizeLocationDraft(group[0])
         );
       } else if (!mapPlaceEditor.hidden) {
-        const place = preferredReferencePlace(group);
-        const location = locationFromReferencePlace(place) || normalizeLocationDraft(group[0]);
-        setMapPlaceDraft(location, {
-          suggestName: place?.name,
-          country: place?.country
-        });
+        if (mapPlaceEditorMode === 'create') {
+          const place = preferredReferencePlace(group);
+          const location = locationFromReferencePlace(place) || normalizeLocationDraft(group[0]);
+          setMapPlaceDraft(location, {
+            suggestName: place?.name,
+            country: place?.country
+          });
+        }
       } else {
         showMapPointGroup(group);
       }
@@ -2079,14 +2166,16 @@ function renderMapPhotoCard() {
   if (!photo) {
     mapController?.setHighlightedPoint(null);
     mapPhotoChoosePlace.hidden = true;
+    mapPointRename.hidden = true;
     mapPointDelete.hidden = true;
     mapPhotoCard.hidden = true;
     return;
   }
   mapController?.setHighlightedPoint(photo);
+  const relatedPlace = relatedPlacesForPhoto(photo)[0];
   mapPhotoCard.classList.remove('is-place-only');
   mapPhotoPreview.hidden = false;
-  mapPlaceAttachPhoto.hidden = !activeMapRelatedPlaces.length;
+  mapPlaceAttachPhoto.hidden = !relatedPlace;
   mapPlaceAttachPhoto.textContent = 'Привязать ещё';
   const fallback = photo.src;
   mapPhotoImage.src = photo.thumbnailSrc || fallback;
@@ -2097,17 +2186,21 @@ function renderMapPhotoCard() {
     ? `${(activeMapPhotoIndex + 1).toLocaleString('ru-RU')} из ${activeMapPhotos.length.toLocaleString('ru-RU')}`
     : photoLocationLabel(photo);
   mapPhotoDate.textContent = formatDate(photo.date);
-  mapPhotoSource.textContent = photoLocationLabel(photo);
+  mapPhotoSource.textContent = relatedPlace
+    ? referencePlaceLabel(relatedPlace)
+    : photoLocationLabel(photo);
   document.querySelector('#mapPhotoPrevious').disabled = activeMapPhotos.length < 2;
   document.querySelector('#mapPhotoNext').disabled = activeMapPhotos.length < 2;
   document.querySelector('#mapPhotoPrevious').setAttribute('aria-label', 'Предыдущая фотография');
   document.querySelector('#mapPhotoNext').setAttribute('aria-label', 'Следующая фотография');
-  const relatedPlace = activeMapRelatedPlaces[0];
   const choosePlaceLabel = relatedPlace ? 'Сменить место' : 'Выбрать место';
   mapPhotoChoosePlace.hidden = false;
   mapPhotoChoosePlace.textContent = choosePlaceLabel;
   mapPhotoChoosePlace.title = `${choosePlaceLabel} (M)`;
   mapPhotoChoosePlace.disabled = mapPlacePickerSaving;
+  mapPointRename.hidden = false;
+  mapPointRename.textContent = relatedPlace ? 'Переименовать' : 'Назвать место';
+  mapPointRename.disabled = mapPlaceSaving;
   mapPointDelete.hidden = false;
   mapPointDelete.textContent = relatedPlace ? 'Удалить место' : 'Убрать с карты';
   mapPointDelete.disabled = mapPointDeleting;
@@ -2128,6 +2221,7 @@ function renderMapPlaceCard() {
   if (!place) {
     mapController?.setHighlightedPoint(null);
     mapPhotoChoosePlace.hidden = true;
+    mapPointRename.hidden = true;
     mapPointDelete.hidden = true;
     mapPhotoCard.hidden = true;
     return;
@@ -2154,6 +2248,9 @@ function renderMapPlaceCard() {
   document.querySelector('#mapPhotoNext').setAttribute('aria-label', 'Следующее место');
   mapPhotoChoosePlace.hidden = true;
   mapPlaceAttachPhoto.hidden = false;
+  mapPointRename.hidden = false;
+  mapPointRename.textContent = 'Переименовать';
+  mapPointRename.disabled = mapPlaceSaving;
   mapPointDelete.hidden = false;
   mapPointDelete.textContent = 'Удалить место';
   mapPointDelete.disabled = mapPointDeleting;
@@ -2164,8 +2261,8 @@ function showMapPointGroup(group) {
   const groupPhotos = group.filter((point) => point.mapPointType === 'photo');
   const groupPlaces = group.filter((point) => point.mapPointType === 'reference');
   if (groupPhotos.length) {
-    const linkedPlaces = linkedReferencePlaces(locationReferencePlaces, groupPhotos);
-    showMapPhotoGroup(groupPhotos, linkedPlaces.length ? linkedPlaces : groupPlaces);
+    const relatedPlaces = relatedReferencePlaces(locationReferencePlaces, groupPhotos);
+    showMapPhotoGroup(groupPhotos, relatedPlaces.length ? relatedPlaces : groupPlaces);
     return;
   }
   activeMapPhotos = [];
@@ -2178,7 +2275,12 @@ function showMapPointGroup(group) {
 }
 
 function activeMapPlaceForDeletion() {
-  return activeMapPlaces[activeMapPlaceIndex] || activeMapRelatedPlaces[0] || null;
+  return activeMapPlaceForEditing();
+}
+
+function activeMapPlaceForEditing() {
+  const photo = activeMapPhotos[activeMapPhotoIndex];
+  return activeMapPlaces[activeMapPlaceIndex] || relatedPlacesForPhoto(photo)[0] || null;
 }
 
 function refreshMapCardAfterDeletion() {
@@ -2195,6 +2297,7 @@ function refreshMapCardAfterDeletion() {
   else if (activeMapPlaces.length) renderMapPlaceCard();
   else {
     mapController?.setHighlightedPoint(null);
+    mapPointRename.hidden = true;
     mapPointDelete.hidden = true;
     mapPhotoCard.hidden = true;
   }
@@ -2310,7 +2413,7 @@ function renderMapPhotoPicker() {
 }
 
 function openMapPhotoPicker() {
-  const place = activeMapPlaces[activeMapPlaceIndex] || activeMapRelatedPlaces[0];
+  const place = activeMapPlaceForEditing();
   if (!place || mapPhotoPickerDialog.open) return;
   mapPhotoPickerActivePlace = place;
   mapPhotoPickerSaving = false;
@@ -2639,9 +2742,7 @@ function finishMapAssignment() {
     activeMapPhotoIndex = 0;
     activeMapPlaces = [];
     activeMapPlaceIndex = 0;
-    activeMapRelatedPlaces = sortedReferencePlaces(
-      locationReferencePlaces.filter((place) => place.id === currentPhoto.locationReferenceId)
-    );
+    activeMapRelatedPlaces = relatedPlacesForPhoto(currentPhoto);
     renderMapPhotoCard();
   }
 }
@@ -2740,7 +2841,7 @@ function openCurrentViewerPhotoOnMap() {
     mapController.setHighlightedPoint(photo);
     showMapPhotoGroup(
       [photo],
-      linkedReferencePlaces(locationReferencePlaces, [photo])
+      relatedPlacesForPhoto(photo)
     );
     mapController.scheduleRender();
   });
@@ -2801,7 +2902,10 @@ function openViewerLocationEditor() {
     referenceId: photo.locationReferenceId
   });
   const mainView = mapController?.getCenter();
-  viewerLocationTitle.textContent = location ? photoLocationLabel(photo) : 'Укажите точку на карте';
+  const relatedPlace = relatedPlacesForPhoto(photo)[0];
+  viewerLocationTitle.textContent = location
+    ? relatedPlace ? referencePlaceLabel(relatedPlace) : photoLocationLabel(photo)
+    : 'Укажите точку на карте';
   viewerLocationRemove.disabled = photo.locationSource !== 'manual' || viewerLocationSaving;
   viewerLocationRemove.textContent = photo.locationSource === 'manual'
     ? 'Сбросить ручную метку'
@@ -2864,7 +2968,10 @@ async function removeViewerLocation() {
       place: updatedPhoto.locationPlace,
       country: updatedPhoto.locationCountry
     });
-    viewerLocationTitle.textContent = location ? photoLocationLabel(updatedPhoto) : 'Укажите точку на карте';
+    const relatedPlace = relatedPlacesForPhoto(updatedPhoto)[0];
+    viewerLocationTitle.textContent = location
+      ? relatedPlace ? referencePlaceLabel(relatedPlace) : photoLocationLabel(updatedPhoto)
+      : 'Укажите точку на карте';
     viewerLocationRemove.textContent = location ? 'Метка из EXIF' : 'Метки нет';
     setViewerLocationDraft(location);
     if (location) viewerLocationMap.setCenter(location, Math.max(8, viewerLocationMap.getCenter().zoom));
@@ -4514,6 +4621,7 @@ document.querySelector('#mapPhotoNext').addEventListener('click', () => moveMapP
 mapPhotoPreview.addEventListener('click', openCurrentMapPhoto);
 mapPhotoChoosePlace.addEventListener('click', startMapPhotoPlacement);
 mapPlaceAttachPhoto.addEventListener('click', openMapPhotoPicker);
+mapPointRename.addEventListener('click', startMapPointRename);
 mapPointDelete.addEventListener('click', () => void deleteActiveMapPoint());
 document.querySelector('#mapPhotoPickerClose').addEventListener('click', closeMapPhotoPicker);
 mapPhotoPickerSearch.addEventListener('input', renderMapPhotoPicker);

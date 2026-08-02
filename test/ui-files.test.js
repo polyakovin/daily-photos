@@ -76,6 +76,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="mapAddPlaceButton"/);
   assert.match(appHtml, /id="mapPlaceEditor"/);
   assert.match(appHtml, /id="mapPlaceAttachPhoto"/);
+  assert.match(appHtml, /id="mapPointRename"[^>]*hidden/);
   assert.match(appHtml, /id="mapPhotoChoosePlace"[^>]*aria-keyshortcuts="M"/);
   assert.match(appHtml, /id="mapAssignmentPreview"/);
   assert.match(appHtml, /id="mapAssignmentPreview"[\s\S]*?<img id="mapAssignmentImage"[^>]*\/>\s*<\/button>/);
@@ -97,9 +98,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
   assert.match(appHtml, /href="\/styles\.css\?v=103"/);
-  assert.match(appHtml, /src="\/map\.js\?v=9"/);
+  assert.match(appHtml, /src="\/map\.js\?v=10"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
-  assert.match(appHtml, /src="\/app\.js\?v=91"/);
+  assert.match(appHtml, /src="\/app\.js\?v=92"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -180,6 +181,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /locationReferenceId/);
   assert.match(appScript, /linkPhotoToMapPlace/);
   assert.match(appScript, /saveMapPlace/);
+  assert.match(appScript, /startMapPointRename/);
+  assert.match(appScript, /method: mapPlaceEditingPlace \? 'PATCH' : 'POST'/);
   assert.match(appScript, /hidePhotoOnMap/);
   assert.match(appScript, /deleteActiveMapPoint/);
   assert.match(appScript, /mapPlacePickerCandidates/);

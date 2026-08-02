@@ -16,6 +16,7 @@ const {
   photoStackPoints,
   project,
   referencePlaceSuggestions,
+  relatedReferencePlaces,
   unproject,
   unlocatedPhotos,
   visibleReferencePoints
@@ -316,6 +317,45 @@ test('map replaces a selected reference marker with the linked photo marker', ()
   assert.deepEqual(
     linkedReferencePlaces(places, photos).map(({ id }) => id),
     ['linked-place']
+  );
+});
+
+test('photo clusters use a saved place at the same maximum-zoom point as their name', () => {
+  const nearbyPlace = {
+    id: 'named-cluster',
+    name: 'Дом',
+    latitude: 55.74062,
+    longitude: 37.6214
+  };
+  const linkedElsewhere = {
+    id: 'linked-elsewhere',
+    name: 'Привязанное место',
+    latitude: 48.8566,
+    longitude: 2.3522
+  };
+  const unrelatedPlace = {
+    id: 'unrelated',
+    name: 'Другое место',
+    latitude: 41.7151,
+    longitude: 44.8271
+  };
+  const photos = [{
+    id: 'nearby-photo',
+    latitude: 55.740621,
+    longitude: 37.621401
+  }, {
+    id: 'linked-photo',
+    latitude: 35.6762,
+    longitude: 139.6503,
+    locationReferenceId: 'linked-elsewhere'
+  }];
+
+  assert.deepEqual(
+    relatedReferencePlaces(
+      [nearbyPlace, linkedElsewhere, unrelatedPlace],
+      photos
+    ).map(({ id }) => id),
+    ['named-cluster', 'linked-elsewhere']
   );
 });
 

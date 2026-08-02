@@ -1084,6 +1084,39 @@ function hidePhotoLocation(photo) {
   return updateStoredPhotoLocation(photo, { hidden: true });
 }
 
+function updateLocationReference(placeId, patch) {
+  const currentReference = locationReferenceDocument(manualPhotoLocations);
+  const place = currentReference.places.find((candidate) => candidate.id === placeId);
+  if (!place) return null;
+  const name = typeof patch?.name === 'string' ? patch.name.trim() : '';
+  if (!name) return false;
+  const nextPlace = { ...place, name };
+  if (Object.hasOwn(patch || {}, 'country')) {
+    const country = typeof patch.country === 'string' ? patch.country.trim() : '';
+    if (country) nextPlace.country = country;
+    else delete nextPlace.country;
+  }
+  const normalizedPlace = normalizeReferencePlace(nextPlace);
+  if (!normalizedPlace) return false;
+
+  const previousLocations = clonePhotoLocations(manualPhotoLocations);
+  replaceLocationReferencePlaces(
+    manualPhotoLocations,
+    currentReference.places.map((candidate) => (
+      candidate.id === placeId ? normalizedPlace : candidate
+    ))
+  );
+  try {
+    writeLocationData(PHOTO_LOCATIONS_FILE, manualPhotoLocations);
+  } catch (error) {
+    manualPhotoLocations = previousLocations;
+    throw error;
+  }
+  return locationReferenceDocument(manualPhotoLocations).places.find((candidate) => (
+    candidate.id === placeId
+  )) || normalizedPlace;
+}
+
 function deleteLocationReference(placeId) {
   const currentReference = locationReferenceDocument(manualPhotoLocations);
   const place = currentReference.places.find((candidate) => candidate.id === placeId);
@@ -1796,6 +1829,52 @@ function handleRequest(request, response) {
   }
 
   const locationReferenceMatch = requestUrl.pathname.match(/^\/api\/location-reference\/([^/]+)$/);
+  if (locationReferenceMatch && request.method === 'PATCH') {
+    let placeId;
+    try {
+      placeId = decodeURIComponent(locationReferenceMatch[1]);
+    } catch {
+      sendJson(response, 400, { error: 'Неверный идентификатор места' });
+      return;
+    }
+    let body = '';
+    let bodyTooLarge = false;
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      if (bodyTooLarge) return;
+      body += chunk;
+      if (body.length > 4096) bodyTooLarge = true;
+    });
+    request.on('end', () => {
+      if (bodyTooLarge) {
+        sendJson(response, 413, { error: 'Слишком большой запрос' });
+        return;
+      }
+      let patch;
+      try {
+        patch = JSON.parse(body);
+      } catch {
+        sendJson(response, 400, { error: 'Неверный JSON' });
+        return;
+      }
+      try {
+        const result = updateLocationReference(placeId, patch);
+        if (result === null) {
+          sendJson(response, 404, { error: 'Место не найдено' });
+          return;
+        }
+        if (!result) {
+          sendJson(response, 400, { error: 'Укажите название места' });
+          return;
+        }
+        sendJson(response, 200, result);
+      } catch (error) {
+        console.error(`Не удалось переименовать место: ${error.message}`);
+        sendJson(response, 500, { error: 'Не удалось переименовать место' });
+      }
+    });
+    return;
+  }
   if (locationReferenceMatch && request.method === 'DELETE') {
     let placeId;
     try {

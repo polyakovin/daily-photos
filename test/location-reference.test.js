@@ -132,17 +132,50 @@ test('location reference is exposed from the selected archive folder', async (t)
     createdPlace
   );
 
+  const renamedResponse = await fetch(
+    `${server.url}/api/location-reference/${encodeURIComponent(createdPlace.id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Синий город', country: 'Северный Тунис' })
+    }
+  );
+  assert.equal(renamedResponse.status, 200);
+  const renamedPlace = await renamedResponse.json();
+  assert.deepEqual(renamedPlace, {
+    ...createdPlace,
+    name: 'Синий город',
+    country: 'Северный Тунис'
+  });
+  assert.deepEqual(
+    readLocationData(
+      path.join(archiveRoot, 'photo_locations.json'),
+      path.join(archiveRoot, 'location_reference.json')
+    ).documentMetadata.places.at(-1),
+    renamedPlace
+  );
+
+  const invalidRenameResponse = await fetch(
+    `${server.url}/api/location-reference/${encodeURIComponent(createdPlace.id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '' })
+    }
+  );
+  assert.equal(invalidRenameResponse.status, 400);
+
   const [photo] = await fetch(`${server.url}/api/photos`).then((response) => response.json());
   assert.ok(photo?.id);
   const linkedResponse = await fetch(`${server.url}/api/photo-locations/${photo.id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      latitude: createdPlace.latitude,
-      longitude: createdPlace.longitude,
-      place: createdPlace.name,
-      country: createdPlace.country,
-      referenceId: createdPlace.id
+      latitude: renamedPlace.latitude,
+      longitude: renamedPlace.longitude,
+      place: renamedPlace.name,
+      country: renamedPlace.country,
+      referenceId: renamedPlace.id
     })
   });
   assert.equal(linkedResponse.status, 200);
@@ -154,7 +187,7 @@ test('location reference is exposed from the selected archive folder', async (t)
   assert.equal(deletedResponse.status, 200);
   assert.deepEqual(await deletedResponse.json(), {
     placeId: createdPlace.id,
-    placeName: createdPlace.name,
+    placeName: renamedPlace.name,
     removedPhotoCount: 1,
     photoLocations: [{
       photoId: photo.id,
@@ -184,6 +217,16 @@ test('location reference is exposed from the selected archive folder', async (t)
     { method: 'DELETE' }
   );
   assert.equal(missingDeleteResponse.status, 404);
+
+  const missingRenameResponse = await fetch(
+    `${server.url}/api/location-reference/${encodeURIComponent(createdPlace.id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Несуществующее место' })
+    }
+  );
+  assert.equal(missingRenameResponse.status, 404);
 
   const invalidResponse = await fetch(`${server.url}/api/location-reference`, {
     method: 'POST',
