@@ -1429,6 +1429,8 @@ body.presentation-mode .timeline-item img.is-presentation-blurred { filter: blur
 .map-playback-button:hover,
 .map-playback-button[aria-pressed="true"] { color: #fffdf7; background: #9a5835; border-color: #9a5835; }
 .map-playback-button:disabled { color: var(--muted); background: transparent; border-color: var(--line); cursor: not-allowed; opacity: .55; }
+.map-playback-button,
+.map-add-place-button { transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
 .map-assign-button {
   min-height: 42px;
   padding: 0 16px;
@@ -2739,6 +2741,40 @@ body .viewer-media img.is-loaded.is-press-zoomable {
 :root[data-theme="dark"] .map-search-results > button:hover,
 :root[data-theme="dark"] .map-search-results > button:focus-visible { background: rgba(216, 232, 222, .1); }
 :root[data-theme="dark"] .map-summary strong { color: #a8d5b9; }
+:root[data-theme="dark"] .map-playback-button:not(:disabled),
+:root[data-theme="dark"] .map-add-place-button:not(:disabled) {
+  color: #d7e7dd;
+  background: rgba(216, 232, 222, .08);
+  border-color: rgba(190, 218, 201, .28);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .16);
+}
+:root[data-theme="dark"] .map-playback-button:not(:disabled):hover,
+:root[data-theme="dark"] .map-add-place-button:not(:disabled):hover {
+  color: #f5faf7;
+  background: rgba(120, 179, 142, .18);
+  border-color: rgba(168, 213, 185, .46);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .24);
+  transform: translateY(-1px);
+}
+:root[data-theme="dark"] .map-playback-button[aria-pressed="true"]:not(:disabled) {
+  color: #f5faf7;
+  background: #4c886f;
+  border-color: #5d9d82;
+}
+:root[data-theme="dark"] .map-playback-button:focus-visible,
+:root[data-theme="dark"] .map-add-place-button:focus-visible {
+  outline: 3px solid rgba(168, 213, 185, .42);
+  outline-offset: 2px;
+}
+:root[data-theme="dark"] .map-playback-button:disabled,
+:root[data-theme="dark"] .map-add-place-button:disabled,
+:root[data-theme="dark"] .map-assign-button:disabled {
+  color: rgba(216, 232, 222, .38);
+  background: transparent;
+  border-color: rgba(216, 232, 222, .09);
+  box-shadow: none;
+  opacity: 1;
+}
 
 :root[data-theme="dark"] .life-birth-date .date-picker { background: rgba(154, 183, 165, .1); }
 :root[data-theme="dark"] .life-birth-date .date-picker:hover { background: rgba(154, 183, 165, .16); }

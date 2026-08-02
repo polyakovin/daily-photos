@@ -96,7 +96,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=101"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=102"/);
   assert.match(appHtml, /src="\/map\.js\?v=6"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
   assert.match(appHtml, /src="\/app\.js\?v=87"/);
@@ -127,6 +127,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.geo-map-playback-preview/);
   assert.match(styles, /\.map-playback\s*\{/);
   assert.match(styles, /#mapPhotoChoosePlace:not\(\[hidden\]\)::after/);
+  assert.match(styles, /:root\[data-theme="dark"\] \.map-playback-button:not\(:disabled\)/);
+  assert.match(styles, /:root\[data-theme="dark"\] \.map-add-place-button:not\(:disabled\)/);
   assert.match(styles, /\.viewer-mini-map\s*\{[^}]*opacity:\s*\.56/);
   assert.match(styles, /\.viewer-mini-map:hover[\s\S]*?opacity:\s*1/);
   assert.match(styles, /\.viewer-mini-map-canvas\s*\{[^}]*pointer-events:\s*none/);
