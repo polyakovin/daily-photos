@@ -66,6 +66,10 @@
     return normalizeCoordinates(point);
   }
 
+  function unlocatedPhotos(photos) {
+    return (Array.isArray(photos) ? photos : []).filter((photo) => !pointCoordinates(photo));
+  }
+
   function displayCoordinates(value) {
     const coordinates = normalizeCoordinates(value);
     if (!coordinates) return null;
@@ -1048,6 +1052,7 @@
     project,
     referencePlaceSuggestions,
     unproject,
+    unlocatedPhotos,
     visibleReferencePoints
   };
 }));

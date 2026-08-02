@@ -25,6 +25,7 @@ const {
   normalizeCoordinates: normalizeMapCoordinates,
   parseCoordinateQuery,
   referencePlaceSuggestions,
+  unlocatedPhotos,
   visibleReferencePoints
 } = window.PhotoDayMap;
 const {
@@ -1916,9 +1917,7 @@ function mapPointCollections() {
 
 function renderMapLocations({ fit = false } = {}) {
   const { locatedPhotos, points } = mapPointCollections();
-  const withoutLocation = photos.filter((photo) => (
-    !photoHasLocation(photo) && !photo.locationHidden
-  )).length;
+  const withoutLocation = unlocatedPhotos(photos).length;
   const places = distinctMapPointCount(points);
   const playbackFrameCount = buildMapPlaybackFrames(locatedPhotos, photoSelections).length;
 
@@ -2589,7 +2588,7 @@ function renderMapAssignment() {
 function startMapAssignment() {
   if (mapPlaybackActive) stopMapPlayback({ render: false });
   ensureMap();
-  mapAssignmentPhotos = photos.filter((photo) => !photoHasLocation(photo) && !photo.locationHidden);
+  mapAssignmentPhotos = unlocatedPhotos(photos);
   mapAssignmentIndex = 0;
   mapAssignmentMode = 'batch';
   mapPhotoCard.hidden = true;

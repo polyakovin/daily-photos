@@ -17,6 +17,7 @@ const {
   project,
   referencePlaceSuggestions,
   unproject,
+  unlocatedPhotos,
   visibleReferencePoints
 } = require('../src/renderer/map');
 
@@ -40,6 +41,17 @@ test('map coordinate helpers reject invalid values and wrap longitude', () => {
   assert.equal(normalizeCoordinates({ latitude: 0, longitude: 181 }), null);
   assert.equal(normalizeLongitude(190), -170);
   assert.equal(normalizeLongitude(-190), 170);
+});
+
+test('unlocated photos include photos deliberately removed from the map', () => {
+  const hidden = { id: 'hidden', locationHidden: true };
+  const withoutCoordinates = { id: 'without-coordinates' };
+  const located = { id: 'located', latitude: 55.7558, longitude: 37.6173 };
+
+  assert.deepEqual(
+    unlocatedPhotos([hidden, located, withoutCoordinates]).map(({ id }) => id),
+    ['hidden', 'without-coordinates']
+  );
 });
 
 test('map accepts decimal coordinates without sending them to address search', () => {
