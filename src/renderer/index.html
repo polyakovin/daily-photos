@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Фото дня — календарь</title>
     <script src="/theme.js?v=1"></script>
-    <link rel="stylesheet" href="/styles.css?v=100" />
+    <link rel="stylesheet" href="/styles.css?v=101" />
   </head>
   <body>
     <main class="shell">
@@ -243,7 +243,14 @@
             </div>
             <div class="map-photo-actions">
               <button id="mapPhotoPrevious" type="button" aria-label="Предыдущая фотография">←</button>
-              <button id="mapPhotoChoosePlace" type="button" hidden>Выбрать место</button>
+              <button
+                id="mapPhotoChoosePlace"
+                type="button"
+                aria-keyshortcuts="M"
+                data-shortcut="M"
+                title="Выбрать место (M)"
+                hidden
+              >Выбрать место</button>
               <button id="mapPlaceAttachPhoto" type="button" hidden>Привязать фотографию</button>
               <button id="mapPointDelete" type="button" hidden>Удалить место</button>
               <button id="mapPhotoNext" type="button" aria-label="Следующая фотография">→</button>
@@ -755,6 +762,6 @@
     <script src="/photo-import-date.js?v=1" defer></script>
     <script src="/date-picker.js?v=7" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=86" defer></script>
+    <script src="/app.js?v=87" defer></script>
   </body>
 </html>

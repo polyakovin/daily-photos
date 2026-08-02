@@ -1992,7 +1992,8 @@ body.presentation-mode .timeline-item img.is-presentation-blurred { filter: blur
 .map-photo-copy span { color: #6d776f; font-size: 9px; }
 .map-photo-actions { display: flex; align-items: center; gap: 6px; }
 .map-photo-actions button { min-width: 32px; height: 32px; padding: 0 10px; color: #17332b; background: transparent; border: 1px solid rgba(22,58,48,.16); border-radius: 999px; font-size: 10px; font-weight: 750; cursor: pointer; }
-.map-photo-actions #mapPhotoChoosePlace { color: #f3efe5; background: #356e58; border-color: #356e58; }
+.map-photo-actions #mapPhotoChoosePlace:not([hidden]) { display: inline-flex; align-items: center; gap: 7px; color: #f3efe5; background: #356e58; border-color: #356e58; }
+.map-photo-actions #mapPhotoChoosePlace:not([hidden])::after { content: attr(data-shortcut); min-width: 18px; padding: 2px 5px; color: rgba(255, 255, 255, .78); background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .2); border-radius: 5px; font-size: 8px; line-height: 1; text-align: center; }
 .map-photo-actions #mapPlaceAttachPhoto { color: #f3efe5; background: #9a5835; border-color: #9a5835; }
 .map-photo-actions #mapPointDelete { color: #b44840; border-color: rgba(180, 72, 64, .28); }
 .map-photo-actions #mapPointDelete:hover,

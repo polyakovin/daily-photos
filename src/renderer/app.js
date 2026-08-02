@@ -2099,8 +2099,10 @@ function renderMapPhotoCard() {
   document.querySelector('#mapPhotoPrevious').setAttribute('aria-label', 'Предыдущая фотография');
   document.querySelector('#mapPhotoNext').setAttribute('aria-label', 'Следующая фотография');
   const relatedPlace = activeMapRelatedPlaces[0];
+  const choosePlaceLabel = relatedPlace ? 'Сменить место' : 'Выбрать место';
   mapPhotoChoosePlace.hidden = false;
-  mapPhotoChoosePlace.textContent = relatedPlace ? 'Сменить место' : 'Выбрать место';
+  mapPhotoChoosePlace.textContent = choosePlaceLabel;
+  mapPhotoChoosePlace.title = `${choosePlaceLabel} (M)`;
   mapPhotoChoosePlace.disabled = mapPlacePickerSaving;
   mapPointDelete.hidden = false;
   mapPointDelete.textContent = relatedPlace ? 'Удалить место' : 'Убрать с карты';
@@ -4758,6 +4760,24 @@ document.addEventListener('keydown', (event) => {
   const target = event.target;
   const isEditableTarget = target instanceof HTMLElement
     && (target.matches('input, select, textarea') || target.isContentEditable);
+
+  if (event.code === 'KeyM'
+      && !event.metaKey
+      && !event.ctrlKey
+      && !event.altKey
+      && !isEditableTarget
+      && !mapView.hidden
+      && !mapPhotoCard.hidden
+      && !mapPhotoChoosePlace.hidden
+      && !mapPhotoChoosePlace.disabled
+      && mapAssignment.hidden
+      && mapPlaceEditor.hidden
+      && !mapPhotoPickerDialog.open
+      && !mapPlacePickerDialog.open) {
+    event.preventDefault();
+    startMapPhotoPlacement();
+    return;
+  }
 
   if (!document.querySelector('#calendarView').hidden
       && ['year', 'month', 'week'].includes(calendarFocus)

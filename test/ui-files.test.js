@@ -76,7 +76,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="mapAddPlaceButton"/);
   assert.match(appHtml, /id="mapPlaceEditor"/);
   assert.match(appHtml, /id="mapPlaceAttachPhoto"/);
-  assert.match(appHtml, /id="mapPhotoChoosePlace"/);
+  assert.match(appHtml, /id="mapPhotoChoosePlace"[^>]*aria-keyshortcuts="M"/);
   assert.match(appHtml, /id="mapAssignmentPreview"/);
   assert.match(appHtml, /id="mapAssignmentPreview"[\s\S]*?<img id="mapAssignmentImage"[^>]*\/>\s*<\/button>/);
   assert.doesNotMatch(appHtml, /id="mapAssignmentOpenPhoto"/);
@@ -96,10 +96,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=100"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=101"/);
   assert.match(appHtml, /src="\/map\.js\?v=6"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
-  assert.match(appHtml, /src="\/app\.js\?v=86"/);
+  assert.match(appHtml, /src="\/app\.js\?v=87"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -126,6 +126,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.geo-map-playback-route/);
   assert.match(styles, /\.geo-map-playback-preview/);
   assert.match(styles, /\.map-playback\s*\{/);
+  assert.match(styles, /#mapPhotoChoosePlace:not\(\[hidden\]\)::after/);
   assert.match(styles, /\.viewer-mini-map\s*\{[^}]*opacity:\s*\.56/);
   assert.match(styles, /\.viewer-mini-map:hover[\s\S]*?opacity:\s*1/);
   assert.match(styles, /\.viewer-mini-map-canvas\s*\{[^}]*pointer-events:\s*none/);
@@ -196,6 +197,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /mapPlaybackSpeed\.addEventListener\('change'/);
   assert.match(appScript, /mapAssignmentPhotos = \[photo\]/);
   assert.match(appScript, /mapPhotoChoosePlace\.addEventListener\('click', startMapPhotoPlacement\)/);
+  assert.match(appScript, /event\.code === 'KeyM'/);
+  assert.match(appScript, /startMapPhotoPlacement\(\)/);
   assert.doesNotMatch(appScript, /mapPhotoChoosePlace\.addEventListener\('click', \(\) => openMapPlacePicker\(\)\)/);
   assert.match(appScript, /openCurrentMapAssignmentPhoto/);
   assert.match(appScript, /mapAssignmentPreview\.addEventListener\('click', openCurrentMapAssignmentPhoto\)/);
