@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Фото дня — календарь</title>
     <script src="/theme.js?v=1"></script>
-    <link rel="stylesheet" href="/styles.css?v=98" />
+    <link rel="stylesheet" href="/styles.css?v=99" />
   </head>
   <body>
     <main class="shell">
@@ -113,6 +113,13 @@
           </div>
           <div class="map-toolbar-actions">
             <div class="map-summary" id="mapSummary" aria-live="polite"></div>
+            <button
+              class="map-playback-button"
+              id="mapPlaybackButton"
+              type="button"
+              aria-pressed="false"
+              disabled
+            >Анимация</button>
             <button class="map-add-place-button" id="mapAddPlaceButton" type="button">Добавить место</button>
             <button class="map-assign-button" id="mapAssignButton" type="button">Расставить без места</button>
           </div>
@@ -139,6 +146,43 @@
             <strong>На карте пока тихо</strong>
             <span>GPS-координаты появятся из EXIF или файла архива, а остальные места можно отметить вручную.</span>
           </div>
+          <section class="map-playback" id="mapPlayback" aria-label="Анимация перемещений" hidden>
+            <button
+              class="map-playback-play"
+              id="mapPlaybackPlay"
+              type="button"
+              aria-label="Запустить анимацию"
+            >▶</button>
+            <div class="map-playback-timeline">
+              <div>
+                <strong id="mapPlaybackDate">—</strong>
+                <span id="mapPlaybackPosition">0 / 0</span>
+              </div>
+              <input
+                id="mapPlaybackRange"
+                type="range"
+                min="0"
+                max="0"
+                value="0"
+                step="1"
+                aria-label="Текущий день маршрута"
+              />
+            </div>
+            <div class="map-playback-step" aria-label="Переключение дней">
+              <button id="mapPlaybackPrevious" type="button" aria-label="Предыдущий день">←</button>
+              <button id="mapPlaybackNext" type="button" aria-label="Следующий день">→</button>
+            </div>
+            <label class="map-playback-speed">
+              <span>Скорость</span>
+              <select id="mapPlaybackSpeed">
+                <option value="0.5">0,5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+              </select>
+            </label>
+            <button class="map-playback-close" id="mapPlaybackClose" type="button" aria-label="Закрыть анимацию">×</button>
+          </section>
           <aside class="map-assignment" id="mapAssignment" hidden>
             <button
               class="map-assignment-preview"
@@ -707,10 +751,10 @@
     </dialog>
 
     <script src="/life-range.js?v=1" defer></script>
-    <script src="/map.js?v=4" defer></script>
+    <script src="/map.js?v=5" defer></script>
     <script src="/photo-import-date.js?v=1" defer></script>
     <script src="/date-picker.js?v=7" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=85" defer></script>
+    <script src="/app.js?v=86" defer></script>
   </body>
 </html>

@@ -248,6 +248,33 @@
     ).size;
   }
 
+  function buildMapPlaybackFrames(points, preferredPhotoIds = new Map()) {
+    const photosByDate = new Map();
+    for (const point of Array.isArray(points) ? points : []) {
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(String(point?.date || ''))
+        || !pointCoordinates(point)
+        || !(point.thumbnailSrc || point.src)
+      ) continue;
+      const dayPhotos = photosByDate.get(point.date) || [];
+      dayPhotos.push(point);
+      photosByDate.set(point.date, dayPhotos);
+    }
+    return [...photosByDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, photos]) => {
+      const preferredId = preferredPhotoIds instanceof Map
+        ? preferredPhotoIds.get(date)
+        : preferredPhotoIds?.[date];
+      const photo = photos.find((candidate) => candidate.id === preferredId) || photos[0];
+      return { date, photo, photos };
+    });
+  }
+
+  function mapPlaybackDelay(speed, baseDelay = 1600) {
+    const safeSpeed = Number(speed) > 0 ? Number(speed) : 1;
+    const safeBaseDelay = Number(baseDelay) > 0 ? Number(baseDelay) : 1600;
+    return Math.max(100, Math.round(safeBaseDelay / safeSpeed));
+  }
+
   function photoStackPoints(points, random = Math.random) {
     const locatedPoints = (Array.isArray(points) ? points : [])
       .filter((point) => pointCoordinates(point));
@@ -327,10 +354,29 @@
       this.lastWheelZoomAt = 0;
       this.wheelResetTimer = 0;
       this.previewKey = null;
+      this.playbackRoute = [];
+      this.playbackActivePoint = null;
+      this.playbackPreviewData = null;
       this.destroyed = false;
 
       this.tileLayer = document.createElement('div');
       this.tileLayer.className = 'geo-map-tiles';
+      this.playbackRouteLayer = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      this.playbackRouteLayer.classList.add('geo-map-playback-layer');
+      this.playbackRouteLayer.setAttribute('aria-hidden', 'true');
+      this.playbackRouteLayer.hidden = true;
+      this.playbackRouteHalo = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      this.playbackRouteHalo.classList.add('geo-map-playback-route-halo');
+      this.playbackRoutePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      this.playbackRoutePath.classList.add('geo-map-playback-route');
+      this.playbackRouteMarker = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      this.playbackRouteMarker.classList.add('geo-map-playback-marker');
+      this.playbackRouteMarker.innerHTML = '<circle r="10"></circle><circle r="4"></circle>';
+      this.playbackRouteLayer.append(
+        this.playbackRouteHalo,
+        this.playbackRoutePath,
+        this.playbackRouteMarker
+      );
       this.markerLayer = document.createElement('div');
       this.markerLayer.className = 'geo-map-markers';
       this.selectionLayer = document.createElement('div');
@@ -345,13 +391,43 @@
       this.previewSubtitle = document.createElement('small');
       this.previewCopy.replaceChildren(this.previewTitle, this.previewSubtitle);
       this.preview.replaceChildren(this.previewImage, this.previewCopy);
+      this.playbackPreview = document.createElement('button');
+      this.playbackPreview.type = 'button';
+      this.playbackPreview.className = 'geo-map-playback-preview';
+      this.playbackPreview.hidden = true;
+      this.playbackPreviewImage = document.createElement('img');
+      this.playbackPreviewImage.alt = '';
+      this.playbackPreviewCopy = document.createElement('span');
+      this.playbackPreviewTitle = document.createElement('strong');
+      this.playbackPreviewSubtitle = document.createElement('small');
+      this.playbackPreviewCopy.replaceChildren(
+        this.playbackPreviewTitle,
+        this.playbackPreviewSubtitle
+      );
+      this.playbackPreview.replaceChildren(this.playbackPreviewImage, this.playbackPreviewCopy);
+      this.playbackPreview.addEventListener('pointerdown', (event) => event.stopPropagation());
+      this.playbackPreview.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (this.playbackPreviewData?.photo) {
+          this.options.onPlaybackPhotoClick?.(this.playbackPreviewData.photo);
+        }
+      });
+      this.playbackPreviewImage.addEventListener('error', () => {
+        const fallbackSrc = this.playbackPreviewImage.dataset.fallbackSrc;
+        if (
+          fallbackSrc
+          && this.playbackPreviewImage.getAttribute('src') !== fallbackSrc
+        ) this.playbackPreviewImage.src = fallbackSrc;
+      });
       this.container.classList.add('geo-map');
       this.container.classList.toggle('is-selecting-location', this.selectionMode);
       this.container.replaceChildren(
         this.tileLayer,
+        this.playbackRouteLayer,
         this.markerLayer,
         this.selectionLayer,
-        this.preview
+        this.preview,
+        this.playbackPreview
       );
 
       this.handlePointerDown = this.handlePointerDown.bind(this);
@@ -427,6 +503,19 @@
       for (const marker of this.markerNodes.values()) marker.photoDayStackPhotos = null;
       if (fit) this.fitPoints(this.points);
       else this.scheduleRender();
+    }
+
+    setPlaybackRoute(points, { activePoint = null, preview = null } = {}) {
+      this.playbackRoute = (Array.isArray(points) ? points : []).filter(pointCoordinates);
+      this.playbackActivePoint = pointCoordinates(activePoint) ? activePoint : null;
+      this.playbackPreviewData = preview;
+      const active = Boolean(this.playbackRoute.length && this.playbackActivePoint);
+      this.container.classList.toggle('has-playback-route', active);
+      if (!active) {
+        this.playbackPreview.hidden = true;
+        this.playbackPreview.removeAttribute('style');
+      }
+      this.scheduleRender();
     }
 
     setSelection(location) {
@@ -743,17 +832,21 @@
       this.positionPointPreview(button.photoDayScreen);
     }
 
-    positionPointPreview(screen) {
-      if (this.preview.hidden || !screen) return;
+    positionPreview(preview, screen) {
+      if (preview.hidden || !screen) return;
       const viewport = this.viewport();
-      const halfWidth = Math.max(82, this.preview.offsetWidth / 2);
+      const halfWidth = Math.max(82, preview.offsetWidth / 2);
       const x = clamp(screen.x, halfWidth + 8, viewport.width - halfWidth - 8);
-      const placeBelow = screen.y < this.preview.offsetHeight + 34;
+      const placeBelow = screen.y < preview.offsetHeight + 34;
       const y = placeBelow ? screen.y + 24 : screen.y - 20;
-      this.preview.classList.toggle('is-below', placeBelow);
-      this.preview.style.transform = placeBelow
+      preview.classList.toggle('is-below', placeBelow);
+      preview.style.transform = placeBelow
         ? `translate3d(${x}px, ${y}px, 0) translate(-50%, 0)`
         : `translate3d(${x}px, ${y}px, 0) translate(-50%, -100%)`;
+    }
+
+    positionPointPreview(screen) {
+      this.positionPreview(this.preview, screen);
     }
 
     hidePointPreview(key = null) {
@@ -761,6 +854,55 @@
       this.previewKey = null;
       this.preview.hidden = true;
       this.preview.removeAttribute('style');
+    }
+
+    renderPlaybackRoute() {
+      if (!this.playbackRoute.length || !this.playbackActivePoint) {
+        this.playbackRouteLayer.hidden = true;
+        this.playbackPreview.hidden = true;
+        return;
+      }
+      this.playbackRouteLayer.hidden = false;
+      const viewport = this.viewport();
+      const worldSize = TILE_SIZE * (2 ** this.zoom);
+      const screens = this.playbackRoute.map((point) => this.screenPoint(point));
+      let pathData = '';
+      screens.forEach((screen, index) => {
+        const previous = screens[index - 1];
+        const startsSegment = !previous || Math.abs(screen.x - previous.x) > worldSize / 2;
+        pathData += `${startsSegment ? 'M' : 'L'}${screen.x.toFixed(2)} ${screen.y.toFixed(2)} `;
+      });
+      this.playbackRouteHalo.setAttribute('d', pathData.trim());
+      this.playbackRoutePath.setAttribute('d', pathData.trim());
+      const activeScreen = this.screenPoint(this.playbackActivePoint);
+      this.playbackRouteMarker.setAttribute(
+        'transform',
+        `translate(${activeScreen.x.toFixed(2)} ${activeScreen.y.toFixed(2)})`
+      );
+
+      const preview = this.playbackPreviewData;
+      this.playbackPreview.hidden = !preview;
+      if (!preview) return;
+      const signature = [preview.src, preview.title, preview.subtitle].join('|');
+      if (this.playbackPreview.dataset.signature !== signature) {
+        this.playbackPreview.dataset.signature = signature;
+        this.playbackPreviewImage.src = preview.src || '';
+        this.playbackPreviewImage.dataset.fallbackSrc = preview.fallbackSrc || '';
+        this.playbackPreviewImage.alt = preview.alt || '';
+        this.playbackPreviewTitle.textContent = preview.title || '';
+        this.playbackPreviewSubtitle.textContent = preview.subtitle || '';
+        this.playbackPreview.setAttribute('aria-label', preview.ariaLabel || preview.title || '');
+      }
+      if (
+        activeScreen.x < -this.playbackPreview.offsetWidth
+        || activeScreen.y < -this.playbackPreview.offsetHeight
+        || activeScreen.x > viewport.width + this.playbackPreview.offsetWidth
+        || activeScreen.y > viewport.height + this.playbackPreview.offsetHeight
+      ) {
+        this.playbackPreview.hidden = true;
+        return;
+      }
+      this.positionPreview(this.playbackPreview, activeScreen);
     }
 
     renderMarkers() {
@@ -821,6 +963,7 @@
 
     render() {
       this.renderTiles();
+      this.renderPlaybackRoute();
       this.renderMarkers();
       this.renderSelection();
       this.container.dataset.zoom = String(this.zoom);
@@ -845,10 +988,12 @@
     MAX_LATITUDE,
     MAX_ZOOM,
     MIN_ZOOM,
+    buildMapPlaybackFrames,
     clusterProjectedPoints,
     distinctMapPointCount,
     linkedReferencePlaces,
     mapCoordinateKey,
+    mapPlaybackDelay,
     normalizeCoordinates,
     normalizeLongitude,
     parseCoordinateQuery,

@@ -68,6 +68,11 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.equal(appResponse.status, 200);
   const appHtml = await appResponse.text();
   assert.match(appHtml, /id="mapSearch"/);
+  assert.match(appHtml, /id="mapPlaybackButton"[^>]*aria-pressed="false"/);
+  assert.match(appHtml, /id="mapPlayback"[^>]*hidden/);
+  assert.match(appHtml, /id="mapPlaybackPlay"/);
+  assert.match(appHtml, /id="mapPlaybackRange"[^>]*type="range"/);
+  assert.match(appHtml, /id="mapPlaybackSpeed"/);
   assert.match(appHtml, /id="mapAddPlaceButton"/);
   assert.match(appHtml, /id="mapPlaceEditor"/);
   assert.match(appHtml, /id="mapPlaceAttachPhoto"/);
@@ -91,10 +96,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=98"/);
-  assert.match(appHtml, /src="\/map\.js\?v=4"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=99"/);
+  assert.match(appHtml, /src="\/map\.js\?v=5"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
-  assert.match(appHtml, /src="\/app\.js\?v=85"/);
+  assert.match(appHtml, /src="\/app\.js\?v=86"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -118,6 +123,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.equal(stylesResponse.status, 200);
   const styles = await stylesResponse.text();
   assert.match(styles, /\.geo-map-hover-preview/);
+  assert.match(styles, /\.geo-map-playback-route/);
+  assert.match(styles, /\.geo-map-playback-preview/);
+  assert.match(styles, /\.map-playback\s*\{/);
   assert.match(styles, /\.viewer-mini-map\s*\{[^}]*opacity:\s*\.56/);
   assert.match(styles, /\.viewer-mini-map:hover[\s\S]*?opacity:\s*1/);
   assert.match(styles, /\.viewer-mini-map-canvas\s*\{[^}]*pointer-events:\s*none/);
@@ -182,6 +190,10 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /mapPlaceSuggestionsToggle\.addEventListener\('click'/);
   assert.match(appScript, /linkSelectedPhotoToPlace/);
   assert.match(appScript, /function startMapPhotoPlacement\(\)/);
+  assert.match(appScript, /function startMapPlayback\(\)/);
+  assert.match(appScript, /function stopMapPlayback\(/);
+  assert.match(appScript, /function setMapPlaybackFrame\(index/);
+  assert.match(appScript, /mapPlaybackSpeed\.addEventListener\('change'/);
   assert.match(appScript, /mapAssignmentPhotos = \[photo\]/);
   assert.match(appScript, /mapPhotoChoosePlace\.addEventListener\('click', startMapPhotoPlacement\)/);
   assert.doesNotMatch(appScript, /mapPhotoChoosePlace\.addEventListener\('click', \(\) => openMapPlacePicker\(\)\)/);
@@ -220,6 +232,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /function renderAboutInfo/);
 
   assert.match(mapScript, /function photoStackPoints\(points,\s*random = Math\.random\)/);
+  assert.match(mapScript, /setPlaybackRoute\(points,/);
+  assert.match(mapScript, /renderPlaybackRoute\(\)/);
   assert.match(mapScript, /function photoFanLayout\(total,\s*index\)/);
   assert.match(mapScript, /className = 'geo-map-fan-photo'/);
   assert.match(mapScript, /MAX_PHOTO_STACK_SIZE = 30/);

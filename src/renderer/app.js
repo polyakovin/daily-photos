@@ -16,10 +16,12 @@ const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
 const { suggestCalendarImportDate } = window.PhotoDayImportDate;
 const { createDatePicker } = window.PhotoDayDatePicker;
 const {
+  buildMapPlaybackFrames,
   distinctMapPointCount,
   InteractiveMap,
   linkedReferencePlaces,
   mapCoordinateKey,
+  mapPlaybackDelay,
   normalizeCoordinates: normalizeMapCoordinates,
   parseCoordinateQuery,
   referencePlaceSuggestions,
@@ -48,6 +50,16 @@ const mapSearchInput = document.querySelector('#mapSearchInput');
 const mapSearchResults = document.querySelector('#mapSearchResults');
 const mapSummary = document.querySelector('#mapSummary');
 const mapEmpty = document.querySelector('#mapEmpty');
+const mapPlaybackButton = document.querySelector('#mapPlaybackButton');
+const mapPlayback = document.querySelector('#mapPlayback');
+const mapPlaybackPlay = document.querySelector('#mapPlaybackPlay');
+const mapPlaybackDate = document.querySelector('#mapPlaybackDate');
+const mapPlaybackPosition = document.querySelector('#mapPlaybackPosition');
+const mapPlaybackRange = document.querySelector('#mapPlaybackRange');
+const mapPlaybackPrevious = document.querySelector('#mapPlaybackPrevious');
+const mapPlaybackNext = document.querySelector('#mapPlaybackNext');
+const mapPlaybackSpeed = document.querySelector('#mapPlaybackSpeed');
+const mapPlaybackClose = document.querySelector('#mapPlaybackClose');
 const mapAddPlaceButton = document.querySelector('#mapAddPlaceButton');
 const mapAssignButton = document.querySelector('#mapAssignButton');
 const mapAssignment = document.querySelector('#mapAssignment');
@@ -234,6 +246,11 @@ let timelineRestoring = false;
 const timelineLoadedImages = new Set();
 let mapController = null;
 let mapDidFitPoints = false;
+let mapPlaybackFrames = [];
+let mapPlaybackIndex = 0;
+let mapPlaybackTimer = 0;
+let mapPlaybackPlaying = false;
+let mapPlaybackActive = false;
 let mapAssignmentPhotos = [];
 let mapAssignmentIndex = 0;
 let mapAssignmentSaving = false;
@@ -1634,6 +1651,7 @@ function updatePhotoLocationState(state, { render = true } = {}) {
     if (state.locationReferenceId) photo.locationReferenceId = state.locationReferenceId;
   }
   if (render) {
+    if (mapPlaybackActive) stopMapPlayback({ render: false });
     renderMapLocations();
     viewerLocationMap?.setPoints(mapPointCollections().points);
   }
@@ -1763,6 +1781,127 @@ function openMapFanPhoto(photo) {
   openViewer(dayPhotos, index);
 }
 
+function mapPlaybackPreview(frame) {
+  const photo = frame?.photo;
+  if (!photo) return null;
+  const count = frame.photos.length;
+  const countLabel = count > 1
+    ? `${count.toLocaleString('ru-RU')} ${pluralize(count, ['фотография', 'фотографии', 'фотографий'])}`
+    : '';
+  return {
+    src: photo.thumbnailSrc || photo.src,
+    fallbackSrc: photo.src,
+    alt: `Фото за ${formatDate(frame.date)}`,
+    title: formatDate(frame.date),
+    subtitle: [countLabel, photoLocationLabel(photo)].filter(Boolean).join(' · '),
+    ariaLabel: `Открыть фото за ${formatDate(frame.date)}`,
+    photo
+  };
+}
+
+function scheduleMapPlayback() {
+  clearTimeout(mapPlaybackTimer);
+  mapPlaybackTimer = 0;
+  if (!mapPlaybackActive || !mapPlaybackPlaying || mapPlaybackFrames.length < 2) return;
+  mapPlaybackTimer = setTimeout(() => {
+    mapPlaybackTimer = 0;
+    if (!mapPlaybackActive || !mapPlaybackPlaying) return;
+    if (mapPlaybackIndex >= mapPlaybackFrames.length - 1) {
+      setMapPlaybackPlaying(false);
+      return;
+    }
+    setMapPlaybackFrame(mapPlaybackIndex + 1);
+    scheduleMapPlayback();
+  }, mapPlaybackDelay(mapPlaybackSpeed.value));
+}
+
+function setMapPlaybackPlaying(playing) {
+  mapPlaybackPlaying = Boolean(
+    playing
+    && mapPlaybackActive
+    && mapPlaybackFrames.length > 1
+  );
+  clearTimeout(mapPlaybackTimer);
+  mapPlaybackTimer = 0;
+  mapPlaybackPlay.textContent = mapPlaybackPlaying ? '❚❚' : '▶';
+  mapPlaybackPlay.setAttribute(
+    'aria-label',
+    mapPlaybackPlaying ? 'Приостановить анимацию' : 'Запустить анимацию'
+  );
+  mapPlayback.classList.toggle('is-playing', mapPlaybackPlaying);
+  if (mapPlaybackPlaying) scheduleMapPlayback();
+}
+
+function setMapPlaybackFrame(index, { restartTimer = false } = {}) {
+  if (!mapPlaybackActive || !mapPlaybackFrames.length) return;
+  const nextIndex = Math.max(0, Math.min(
+    mapPlaybackFrames.length - 1,
+    Math.round(Number(index) || 0)
+  ));
+  mapPlaybackIndex = nextIndex;
+  const frame = mapPlaybackFrames[nextIndex];
+  mapPlaybackDate.textContent = formatDate(frame.date);
+  mapPlaybackPosition.textContent = `${(nextIndex + 1).toLocaleString('ru-RU')} / ${mapPlaybackFrames.length.toLocaleString('ru-RU')}`;
+  mapPlaybackRange.value = String(nextIndex);
+  mapPlaybackPrevious.disabled = nextIndex === 0;
+  mapPlaybackNext.disabled = nextIndex === mapPlaybackFrames.length - 1;
+  mapController?.setPlaybackRoute(
+    mapPlaybackFrames.slice(0, nextIndex + 1).map((candidate) => candidate.photo),
+    {
+      activePoint: frame.photo,
+      preview: mapPlaybackPreview(frame)
+    }
+  );
+  if (restartTimer && mapPlaybackPlaying) scheduleMapPlayback();
+}
+
+function openMapPlaybackPhoto(photo) {
+  setMapPlaybackPlaying(false);
+  openMapFanPhoto(photo);
+}
+
+function startMapPlayback() {
+  ensureMap();
+  if (mapAssignmentPhotos.length || !mapPlaceEditor.hidden) return;
+  const locatedPhotos = photos.filter(photoHasLocation);
+  mapPlaybackFrames = buildMapPlaybackFrames(locatedPhotos, photoSelections);
+  if (!mapPlaybackFrames.length) return;
+
+  mapPlaybackActive = true;
+  mapPlaybackIndex = 0;
+  mapPhotoCard.hidden = true;
+  mapPlayback.hidden = false;
+  mapPlaybackButton.setAttribute('aria-pressed', 'true');
+  mapPlaybackButton.textContent = 'Закрыть анимацию';
+  mapStageWrap.classList.add('is-playing-route');
+  mapPlaybackRange.max = String(mapPlaybackFrames.length - 1);
+  mapPlaybackRange.disabled = mapPlaybackFrames.length < 2;
+  mapPlaybackPlay.disabled = mapPlaybackFrames.length < 2;
+  mapAssignButton.disabled = true;
+  mapAddPlaceButton.disabled = true;
+  mapController.fitPoints(mapPlaybackFrames.map((frame) => frame.photo));
+  setMapPlaybackFrame(0);
+  setMapPlaybackPlaying(mapPlaybackFrames.length > 1);
+}
+
+function stopMapPlayback({ render = true } = {}) {
+  clearTimeout(mapPlaybackTimer);
+  mapPlaybackTimer = 0;
+  mapPlaybackPlaying = false;
+  mapPlaybackActive = false;
+  mapPlaybackFrames = [];
+  mapPlaybackIndex = 0;
+  mapPlayback.hidden = true;
+  mapPlayback.classList.remove('is-playing');
+  mapPlaybackPlay.textContent = '▶';
+  mapPlaybackPlay.setAttribute('aria-label', 'Запустить анимацию');
+  mapPlaybackButton.setAttribute('aria-pressed', 'false');
+  mapPlaybackButton.textContent = 'Анимация';
+  mapStageWrap.classList.remove('is-playing-route');
+  mapController?.setPlaybackRoute([]);
+  if (render) renderMapLocations();
+}
+
 function referenceMapPoints(locatedPhotos) {
   return visibleReferencePoints(locationReferencePlaces, locatedPhotos);
 }
@@ -1780,15 +1919,21 @@ function renderMapLocations({ fit = false } = {}) {
     !photoHasLocation(photo) && !photo.locationHidden
   )).length;
   const places = distinctMapPointCount(points);
+  const playbackFrameCount = buildMapPlaybackFrames(locatedPhotos, photoSelections).length;
 
   mapSummary.innerHTML = `<strong>${places.toLocaleString('ru-RU')} ${pluralize(places, ['место', 'места', 'мест'])}</strong>${locatedPhotos.length.toLocaleString('ru-RU')} ${pluralize(locatedPhotos.length, ['фотография', 'фотографии', 'фотографий'])}`;
   mapAssignButton.disabled = withoutLocation === 0
     || mapAssignmentSaving
-    || Boolean(mapAssignmentPhotos.length);
+    || Boolean(mapAssignmentPhotos.length)
+    || mapPlaybackActive;
   mapAssignButton.textContent = withoutLocation
     ? `Расставить без места · ${withoutLocation.toLocaleString('ru-RU')}`
     : 'Все фотографии на карте';
   mapAddPlaceButton.disabled = mapPlaceSaving
+    || Boolean(mapAssignmentPhotos.length)
+    || !mapPlaceEditor.hidden
+    || mapPlaybackActive;
+  mapPlaybackButton.disabled = playbackFrameCount === 0
     || Boolean(mapAssignmentPhotos.length)
     || !mapPlaceEditor.hidden;
   mapEmpty.hidden = Boolean(points.length) || Boolean(mapAssignmentPhotos.length);
@@ -1810,6 +1955,7 @@ function setMapPlaceDraft(location, { suggestName = '', country = '' } = {}) {
 }
 
 function startMapPlaceCreation() {
+  if (mapPlaybackActive) stopMapPlayback({ render: false });
   ensureMap();
   if (mapAssignmentPhotos.length) return;
   mapPhotoCard.hidden = true;
@@ -1919,6 +2065,7 @@ function ensureMap() {
       }
     },
     onPhotoClick: openMapFanPhoto,
+    onPlaybackPhotoClick: openMapPlaybackPhoto,
     pointPreview: mapPointPreview
   });
   renderMapLocations({ fit: !mapDidFitPoints });
@@ -2429,6 +2576,7 @@ function renderMapAssignment() {
 }
 
 function startMapAssignment() {
+  if (mapPlaybackActive) stopMapPlayback({ render: false });
   ensureMap();
   mapAssignmentPhotos = photos.filter((photo) => !photoHasLocation(photo) && !photo.locationHidden);
   mapAssignmentIndex = 0;
@@ -2443,6 +2591,7 @@ function startMapAssignment() {
 function startMapPhotoPlacement() {
   const photo = activeMapPhotos[activeMapPhotoIndex];
   if (!photo || mapAssignmentPhotos.length || mapAssignmentSaving) return;
+  if (mapPlaybackActive) stopMapPlayback({ render: false });
   ensureMap();
   mapAssignmentPhotos = [photo];
   mapAssignmentIndex = 0;
@@ -2718,6 +2867,9 @@ function switchView(view, { persist = true } = {}) {
   const isMap = view === 'map';
   const isLife = view === 'life';
   const isRandom = view === 'random';
+  if (activeView === 'map' && !isMap && mapPlaybackActive) {
+    stopMapPlayback({ render: false });
+  }
   if (activeView === 'timeline' && !isTimeline && timelineRendered) {
     navigationState = normalizeViewState({
       ...navigationState,
@@ -4292,6 +4444,34 @@ viewerLocationPlaceSearch = setupLocationSearch({
 });
 mapAddPlaceButton.addEventListener('click', startMapPlaceCreation);
 mapAssignButton.addEventListener('click', startMapAssignment);
+mapPlaybackButton.addEventListener('click', () => {
+  if (mapPlaybackActive) stopMapPlayback();
+  else startMapPlayback();
+});
+mapPlaybackPlay.addEventListener('click', () => {
+  if (mapPlaybackPlaying) {
+    setMapPlaybackPlaying(false);
+    return;
+  }
+  if (mapPlaybackIndex >= mapPlaybackFrames.length - 1) setMapPlaybackFrame(0);
+  setMapPlaybackPlaying(true);
+});
+mapPlaybackRange.addEventListener('input', () => {
+  setMapPlaybackPlaying(false);
+  setMapPlaybackFrame(mapPlaybackRange.value);
+});
+mapPlaybackPrevious.addEventListener('click', () => {
+  setMapPlaybackPlaying(false);
+  setMapPlaybackFrame(mapPlaybackIndex - 1);
+});
+mapPlaybackNext.addEventListener('click', () => {
+  setMapPlaybackPlaying(false);
+  setMapPlaybackFrame(mapPlaybackIndex + 1);
+});
+mapPlaybackSpeed.addEventListener('change', () => {
+  if (mapPlaybackPlaying) scheduleMapPlayback();
+});
+mapPlaybackClose.addEventListener('click', () => stopMapPlayback());
 mapPlaceName.addEventListener('input', () => {
   mapPlaceSave.disabled = !mapPlaceDraft || !mapPlaceName.value.trim() || mapPlaceSaving;
 });

@@ -1,9 +1,11 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  buildMapPlaybackFrames,
   clusterProjectedPoints,
   distinctMapPointCount,
   linkedReferencePlaces,
+  mapPlaybackDelay,
   MAX_ZOOM,
   normalizeCoordinates,
   normalizeLongitude,
@@ -68,6 +70,63 @@ test('marker clusters use a world grid that does not depend on viewport movement
     second.map(({ key, points: grouped }) => [key, grouped.map((point) => point.id)])
   );
   assert.equal(first.find((group) => group.points.some((point) => point.id === 'a')).points.length, 2);
+});
+
+test('map playback builds one chronological frame per located photo day', () => {
+  const frames = buildMapPlaybackFrames([{
+    id: 'later-default',
+    date: '2026-06-15',
+    latitude: 41.7151,
+    longitude: 44.8271,
+    src: '/later-default.jpg'
+  }, {
+    id: 'first',
+    date: '2024-01-02',
+    latitude: 55.7558,
+    longitude: 37.6173,
+    src: '/first.jpg'
+  }, {
+    id: 'later-selected',
+    date: '2026-06-15',
+    latitude: 41.716,
+    longitude: 44.828,
+    src: '/later-selected.jpg'
+  }, {
+    id: 'without-location',
+    date: '2025-03-10',
+    src: '/without-location.jpg'
+  }, {
+    id: 'invalid-date',
+    date: 'не дата',
+    latitude: 48.8566,
+    longitude: 2.3522,
+    src: '/invalid.jpg'
+  }], new Map([
+    ['2026-06-15', 'later-selected'],
+    ['2024-01-02', 'missing-selection']
+  ]));
+
+  assert.deepEqual(frames.map((frame) => ({
+    date: frame.date,
+    photo: frame.photo.id,
+    photos: frame.photos.map((photo) => photo.id)
+  })), [{
+    date: '2024-01-02',
+    photo: 'first',
+    photos: ['first']
+  }, {
+    date: '2026-06-15',
+    photo: 'later-selected',
+    photos: ['later-default', 'later-selected']
+  }]);
+});
+
+test('map playback delay follows the selected speed', () => {
+  assert.equal(mapPlaybackDelay(0.5), 3200);
+  assert.equal(mapPlaybackDelay(1), 1600);
+  assert.equal(mapPlaybackDelay(2), 800);
+  assert.equal(mapPlaybackDelay(4), 400);
+  assert.equal(mapPlaybackDelay(0), 1600);
 });
 
 test('points joined at maximum zoom count as one place and share suggestion frequency', () => {
