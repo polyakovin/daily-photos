@@ -7,7 +7,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Фото дня — календарь</title>
     <script src="/theme.js?v=1"></script>
-    <link rel="stylesheet" href="/styles.css?v=104" />
+    <link rel="stylesheet" href="/styles.css?v=106" />
   </head>
   <body>
     <main class="shell">
@@ -679,8 +679,77 @@
           </footer>
         </section>
         <article class="viewer-diary" id="viewerDiary" hidden>
-          <div class="viewer-diary-label">Запись дня</div>
+          <header class="viewer-diary-heading">
+            <div class="viewer-diary-label">Заметка дня</div>
+            <button
+              class="viewer-diary-edit viewer-diary-icon-button"
+              id="viewerDiaryEdit"
+              type="button"
+              aria-label="Редактировать заметку"
+              title="Редактировать заметку"
+              data-tooltip="Редактировать заметку"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m4 20 4.2-1 10.7-10.7a2.2 2.2 0 0 0-3.2-3.2L5 15.8 4 20Z" />
+                <path d="m14.5 6.3 3.2 3.2" />
+              </svg>
+            </button>
+          </header>
           <div class="viewer-diary-content" id="viewerDiaryContent"></div>
+          <form class="viewer-diary-form" id="viewerDiaryForm" hidden>
+            <label for="viewerDiaryInput">Markdown</label>
+            <textarea
+              class="viewer-diary-input"
+              id="viewerDiaryInput"
+              maxlength="500000"
+              placeholder="# Что запомнилось сегодня&#10;&#10;Напишите заметку в Markdown…"
+              spellcheck="true"
+            ></textarea>
+            <footer class="viewer-diary-form-footer">
+              <span class="viewer-diary-status" id="viewerDiaryStatus" aria-live="polite"></span>
+              <div>
+                <button
+                  class="viewer-diary-delete viewer-diary-icon-button"
+                  id="viewerDiaryDelete"
+                  type="button"
+                  aria-label="Удалить заметку"
+                  title="Удалить заметку"
+                  data-tooltip="Удалить заметку"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" />
+                  </svg>
+                </button>
+                <button
+                  class="viewer-diary-cancel viewer-diary-icon-button"
+                  id="viewerDiaryCancel"
+                  type="button"
+                  aria-label="Отменить редактирование"
+                  title="Отменить редактирование"
+                  data-tooltip="Отмена"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m6 6 12 12M18 6 6 18" />
+                  </svg>
+                </button>
+                <button
+                  class="viewer-diary-save viewer-diary-icon-button"
+                  id="viewerDiarySave"
+                  type="submit"
+                  aria-label="Сохранить заметку"
+                  title="Сохранить заметку"
+                  data-tooltip="Сохранить заметку"
+                >
+                  <svg class="viewer-diary-save-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m5 12.5 4.2 4.2L19 7" />
+                  </svg>
+                  <svg class="viewer-diary-saving-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                  </svg>
+                </button>
+              </div>
+            </footer>
+          </form>
         </article>
         <section class="viewer-alternatives" id="viewerAlternatives" aria-label="Варианты фотографии за эту дату" hidden>
           <div class="viewer-alternatives-heading">
@@ -733,13 +802,21 @@
               <span aria-hidden="true">⌖</span> <span id="viewerLocationButtonLabel">Добавить место</span>
             </button>
             <button
-              class="viewer-diary-toggle"
+              class="viewer-diary-toggle viewer-diary-icon-button"
               id="viewerDiaryToggle"
               type="button"
               aria-controls="viewerDiary"
               aria-expanded="false"
+              aria-label="Добавить заметку"
+              title="Добавить заметку"
+              data-tooltip="Добавить заметку"
               hidden
-            >Показать запись</button>
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 3.5h9l3 3V20.5H6Z" />
+                <path d="M15 3.5v3h3M9 10h6M9 14h6M9 18h4" />
+              </svg>
+            </button>
             <div class="viewer-highlight-actions" id="viewerHighlightActions" aria-label="Лучшие фотографии периода">
               <button class="viewer-highlight-button" id="viewerMonthHighlight" type="button" aria-pressed="false">
                 <span aria-hidden="true">☆</span> Фото месяца
@@ -770,6 +847,6 @@
     <script src="/photo-import-date.js?v=1" defer></script>
     <script src="/date-picker.js?v=7" defer></script>
     <script src="/view-state.js?v=1" defer></script>
-    <script src="/app.js?v=93" defer></script>
+    <script src="/app.js?v=95" defer></script>
   </body>
 </html>

@@ -97,11 +97,28 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /id="viewerDateEdit"/);
   assert.match(appHtml, /id="viewerDateForm"/);
   assert.match(appHtml, /id="viewerDateInput"[\s\S]*?type="text"[\s\S]*?data-date-picker/);
+  assert.match(appHtml, /id="viewerDiaryEdit"/);
+  assert.match(appHtml, /id="viewerDiaryForm"/);
+  assert.match(appHtml, /id="viewerDiaryInput"[\s\S]*?<\/textarea>/);
+  assert.match(appHtml, /id="viewerDiaryDelete"/);
+  for (const buttonId of [
+    'viewerDiaryEdit',
+    'viewerDiaryDelete',
+    'viewerDiaryCancel',
+    'viewerDiarySave',
+    'viewerDiaryToggle'
+  ]) {
+    const button = appHtml.match(new RegExp(`<button[^>]*id="${buttonId}"[\\s\\S]*?<\\/button>`))?.[0];
+    assert.ok(button, `${buttonId} is rendered`);
+    assert.match(button, /aria-label="[^"]+"/);
+    assert.match(button, /data-tooltip="[^"]+"/);
+    assert.match(button, /<svg[\s\S]*?<\/svg>/);
+  }
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=104"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=106"/);
   assert.match(appHtml, /src="\/map\.js\?v=10"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
-  assert.match(appHtml, /src="\/app\.js\?v=93"/);
+  assert.match(appHtml, /src="\/app\.js\?v=95"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -134,6 +151,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.viewer-mini-map\s*\{[^}]*opacity:\s*\.56/);
   assert.match(styles, /\.viewer-mini-map:hover[\s\S]*?opacity:\s*1/);
   assert.match(styles, /\.viewer-mini-map-canvas\s*\{[^}]*pointer-events:\s*none/);
+  assert.match(styles, /\.viewer-diary-form/);
+  assert.match(styles, /\.viewer-diary-input/);
+  assert.match(styles, /\.viewer-diary-icon-button\[data-tooltip\]::after/);
   assert.match(styles, /\.geo-map-photo-fan/);
   assert.match(
     styles,
@@ -225,6 +245,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /openMapFanPhoto/);
   assert.match(appScript, /onPhotoClick:\s*openMapFanPhoto/);
   assert.match(appScript, /changeViewerPhotoDate/);
+  assert.match(appScript, /function openViewerDiaryEditor\(\)/);
+  assert.match(appScript, /function saveViewerDiary\(\)/);
+  assert.match(appScript, /\/api\/diary\/\$\{encodeURIComponent\(date\)\}/);
   assert.match(appScript, /function updateViewerMiniMap\(photo\)/);
   const openViewerPhotoOnMapBody = appScript.match(/function openCurrentViewerPhotoOnMap\(\) \{([\s\S]*?)\n\}/)?.[1];
   assert.ok(openViewerPhotoOnMapBody);

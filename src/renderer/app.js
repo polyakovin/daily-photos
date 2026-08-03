@@ -131,6 +131,13 @@ const viewerDateStatus = document.querySelector('#viewerDateStatus');
 const viewerDiary = document.querySelector('#viewerDiary');
 const viewerDiaryContent = document.querySelector('#viewerDiaryContent');
 const viewerDiaryToggle = document.querySelector('#viewerDiaryToggle');
+const viewerDiaryEdit = document.querySelector('#viewerDiaryEdit');
+const viewerDiaryForm = document.querySelector('#viewerDiaryForm');
+const viewerDiaryInput = document.querySelector('#viewerDiaryInput');
+const viewerDiarySave = document.querySelector('#viewerDiarySave');
+const viewerDiaryCancel = document.querySelector('#viewerDiaryCancel');
+const viewerDiaryDelete = document.querySelector('#viewerDiaryDelete');
+const viewerDiaryStatus = document.querySelector('#viewerDiaryStatus');
 const presentationButton = document.querySelector('#presentationButton');
 const aboutButton = document.querySelector('#aboutButton');
 const aboutDialog = document.querySelector('#aboutDialog');
@@ -235,6 +242,8 @@ let visibleDate = new Date();
 let activePhotos = [];
 let activeIndex = 0;
 let viewerDiaryVisible = false;
+let viewerDiaryWasVisible = false;
+let viewerDiarySaving = false;
 let viewerDateSaving = false;
 let viewerTrashInProgress = false;
 let firstArchiveMonth = null;
@@ -4300,15 +4309,153 @@ function renderDiaryMarkdown(markdown) {
   viewerDiaryContent.replaceChildren(fragment);
 }
 
+function canEditViewerDiary(photo = activePhotos[activeIndex]) {
+  return Boolean(
+    photo?.date
+    && (!desktopBridge || (
+      desktopArchiveState?.mode === 'folder'
+      && desktopArchiveState?.available
+    ))
+  );
+}
+
+function updateViewerDiaryControls(hasDiary, hasPhoto) {
+  const isEditing = !viewerDiaryForm.hidden;
+  const canEdit = canEditViewerDiary();
+  viewerDiaryEdit.hidden = isEditing || !hasDiary || !canEdit;
+  viewerDiaryToggle.hidden = isEditing || !hasPhoto || (!hasDiary && !canEdit);
+  const label = hasDiary
+    ? viewerDiaryVisible ? 'Скрыть заметку' : 'Показать заметку'
+    : 'Добавить заметку';
+  viewerDiaryToggle.setAttribute('aria-label', label);
+  viewerDiaryToggle.title = label;
+  viewerDiaryToggle.dataset.tooltip = label;
+  viewerDiaryToggle.setAttribute('aria-expanded', String(isEditing || viewerDiaryVisible));
+}
+
 function setViewerDiaryVisible(visible, hasDiary = viewerPanel.classList.contains('has-diary'), hasPhoto = !viewerPanel.classList.contains('is-diary-only')) {
   viewerDiaryVisible = Boolean(visible && hasDiary);
   viewerDiary.hidden = !hasDiary || (hasPhoto && !viewerDiaryVisible);
   viewerPanel.classList.toggle('is-diary-visible', viewerDiaryVisible);
-  viewerDiaryToggle.hidden = !hasDiary || !hasPhoto;
-  viewerDiaryToggle.textContent = viewerDiaryVisible ? 'Скрыть запись' : 'Показать запись';
-  viewerDiaryToggle.setAttribute('aria-expanded', String(viewerDiaryVisible));
+  updateViewerDiaryControls(hasDiary, hasPhoto);
   if (viewerDiaryVisible) viewerAlternatives.hidden = true;
   else if (viewer.open) renderViewerAlternatives(activePhotos[activeIndex]);
+}
+
+function setViewerDiarySaving(saving) {
+  viewerDiarySaving = saving;
+  viewerDiaryInput.disabled = saving;
+  viewerDiarySave.disabled = saving || !viewerDiaryInput.value.trim();
+  viewerDiaryCancel.disabled = saving;
+  viewerDiaryDelete.disabled = saving;
+  const label = saving ? 'Сохраняем заметку…' : 'Сохранить заметку';
+  viewerDiarySave.classList.toggle('is-saving', saving);
+  viewerDiarySave.setAttribute('aria-label', label);
+  viewerDiarySave.title = label;
+  viewerDiarySave.dataset.tooltip = label;
+}
+
+function closeViewerDiaryEditor({ showDiary = viewerDiaryWasVisible } = {}) {
+  if (viewerDiaryForm.hidden) return;
+  viewerDiaryForm.hidden = true;
+  viewerDiaryContent.hidden = false;
+  viewerPanel.classList.remove('is-editing-diary');
+  viewerDiaryStatus.textContent = '';
+  viewerDiaryStatus.classList.remove('is-error');
+  const hasDiary = viewerPanel.classList.contains('has-diary');
+  const hasPhoto = !viewerPanel.classList.contains('is-diary-only');
+  setViewerDiaryVisible(hasDiary && (!hasPhoto || showDiary), hasDiary, hasPhoto);
+  viewerDiaryWasVisible = false;
+  viewerDiary.scrollTop = 0;
+}
+
+function openViewerDiaryEditor() {
+  const photo = activePhotos[activeIndex];
+  if (!canEditViewerDiary(photo) || viewerDiarySaving) return;
+  if (!viewerDateForm.hidden) closeViewerDateEditor();
+  if (!viewerLocationEditor.hidden) closeViewerLocationEditor();
+  const entry = diaryByDate.get(photo.date);
+  viewerDiaryWasVisible = viewerDiaryVisible;
+  viewerDiaryInput.value = entry?.content || '';
+  viewerDiaryDelete.hidden = !entry;
+  viewerDiaryStatus.textContent = '';
+  viewerDiaryStatus.classList.remove('is-error');
+  viewerDiaryContent.hidden = true;
+  viewerDiaryForm.hidden = false;
+  viewerDiary.hidden = false;
+  viewerDiaryVisible = true;
+  viewerPanel.classList.add('is-diary-visible', 'is-editing-diary');
+  updateViewerDiaryControls(Boolean(entry), Boolean(photo.src));
+  viewerAlternatives.hidden = true;
+  setViewerDiarySaving(false);
+  viewerDiary.scrollTop = 0;
+  viewerDiaryInput.focus();
+}
+
+async function saveViewerDiary() {
+  const photo = activePhotos[activeIndex];
+  const date = photo?.date;
+  const content = viewerDiaryInput.value;
+  if (!canEditViewerDiary(photo) || viewerDiarySaving) return;
+  if (!content.trim()) {
+    viewerDiaryStatus.textContent = 'Напишите заметку или нажмите «Удалить»';
+    viewerDiaryStatus.classList.add('is-error');
+    viewerDiaryInput.focus();
+    return;
+  }
+
+  setViewerDiarySaving(true);
+  viewerDiaryStatus.textContent = 'Сохраняем Markdown…';
+  viewerDiaryStatus.classList.remove('is-error');
+  try {
+    const response = await fetch(`/api/diary/${encodeURIComponent(date)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(result?.error || 'Не удалось сохранить заметку');
+    diaryByDate.set(date, result);
+    renderCalendar();
+    if (activePhotos[activeIndex]?.date === date) {
+      viewerPanel.classList.add('has-diary');
+      renderDiaryMarkdown(result.content);
+      closeViewerDiaryEditor({ showDiary: true });
+    }
+  } catch (error) {
+    viewerDiaryStatus.textContent = error.message;
+    viewerDiaryStatus.classList.add('is-error');
+  } finally {
+    setViewerDiarySaving(false);
+  }
+}
+
+async function deleteViewerDiary() {
+  const photo = activePhotos[activeIndex];
+  const date = photo?.date;
+  if (!date || !diaryByDate.has(date) || viewerDiarySaving) return;
+  if (!window.confirm(`Удалить заметку за ${formatDate(date)}?`)) return;
+
+  setViewerDiarySaving(true);
+  viewerDiaryStatus.textContent = 'Удаляем заметку…';
+  viewerDiaryStatus.classList.remove('is-error');
+  try {
+    const response = await fetch(`/api/diary/${encodeURIComponent(date)}`, { method: 'DELETE' });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(result?.error || 'Не удалось удалить заметку');
+    diaryByDate.delete(date);
+    renderCalendar();
+    if (activePhotos[activeIndex]?.date !== date) return;
+    viewerPanel.classList.remove('has-diary');
+    viewerDiaryContent.replaceChildren();
+    if (photo.src) closeViewerDiaryEditor({ showDiary: false });
+    else viewer.close();
+  } catch (error) {
+    viewerDiaryStatus.textContent = error.message;
+    viewerDiaryStatus.classList.add('is-error');
+  } finally {
+    setViewerDiarySaving(false);
+  }
 }
 
 function updateViewer() {
@@ -4316,6 +4463,7 @@ function updateViewer() {
   const date = parseDate(photo.date);
   const diary = diaryByDate.get(photo.date);
   const hasPhoto = Boolean(photo.src);
+  if (!viewerDiaryForm.hidden) closeViewerDiaryEditor();
   if (!viewerDateForm.hidden) closeViewerDateEditor();
   if (!viewerLocationEditor.hidden) closeViewerLocationEditor();
   desktopBridge?.setViewerPhotoContext?.(hasPhoto ? photo.id : null);
@@ -4365,6 +4513,7 @@ function updateViewer() {
 }
 
 function movePhoto(amount) {
+  if (viewerDiarySaving) return;
   activeIndex = (activeIndex + amount + activePhotos.length) % activePhotos.length;
   updateViewer();
 }
@@ -4806,8 +4955,34 @@ document.querySelector('#viewerLocationZoomOut').addEventListener('click', () =>
 viewerLocationSave.addEventListener('click', saveViewerLocation);
 viewerLocationRemove.addEventListener('click', removeViewerLocation);
 viewerDiaryToggle.addEventListener('click', () => {
+  if (!diaryByDate.has(activePhotos[activeIndex]?.date)) {
+    openViewerDiaryEditor();
+    return;
+  }
   setViewerDiaryVisible(!viewerDiaryVisible);
   persistNavigationState();
+});
+viewerDiaryEdit.addEventListener('click', openViewerDiaryEditor);
+viewerDiaryCancel.addEventListener('click', () => closeViewerDiaryEditor());
+viewerDiaryDelete.addEventListener('click', () => void deleteViewerDiary());
+viewerDiaryForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void saveViewerDiary();
+});
+viewerDiaryInput.addEventListener('input', () => {
+  viewerDiaryStatus.textContent = '';
+  viewerDiaryStatus.classList.remove('is-error');
+  viewerDiarySave.disabled = viewerDiarySaving || !viewerDiaryInput.value.trim();
+});
+viewerDiaryInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault();
+    void saveViewerDiary();
+  } else if (event.key === 'Escape' && !viewerDiarySaving) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeViewerDiaryEditor();
+  }
 });
 viewerMonthHighlight.addEventListener('click', () => setPeriodHighlight('month'));
 viewerYearHighlight.addEventListener('click', () => setPeriodHighlight('year'));
@@ -4859,6 +5034,7 @@ viewerImage.addEventListener('lostpointercapture', resetViewerPressZoom);
 viewerImage.addEventListener('dragstart', (event) => event.preventDefault());
 viewer.addEventListener('close', () => {
   desktopBridge?.setViewerPhotoContext?.(null);
+  closeViewerDiaryEditor();
   closeViewerDateEditor();
   closeViewerLocationEditor();
   resetViewerPressZoom();

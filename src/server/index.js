@@ -9,6 +9,11 @@ const { createPlaceSearch } = require('./geocoder');
 const { indexPhotoRoots } = require('./photo-indexer');
 const { readImportDateOverrides } = require('./import-date-overrides');
 const {
+  MAX_DIARY_CONTENT_LENGTH,
+  deleteDiaryEntry,
+  writeDiaryEntry
+} = require('./diary-storage');
+const {
   movePhotoToDate,
   rollbackPhotoDateMove
 } = require('./photo-date-mover');
@@ -1897,7 +1902,76 @@ function handleRequest(request, response) {
     return;
   }
 
-  if (requestUrl.pathname === '/api/diary') {
+  const diaryEntryMatch = requestUrl.pathname.match(
+    /^\/api\/diary\/((?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))$/
+  );
+  if (diaryEntryMatch && ['PUT', 'DELETE'].includes(request.method)) {
+    const date = diaryEntryMatch[1];
+    if (!isValidDateKey(date)) {
+      sendJson(response, 400, { error: 'Дата должна быть в формате ГГГГ-ММ-ДД' });
+      return;
+    }
+    if (sourceMode !== 'folder') {
+      sendJson(response, 409, { error: 'Заметки доступны только при работе с выбранной папкой' });
+      return;
+    }
+
+    if (request.method === 'DELETE') {
+      try {
+        archiveWatchSuppressedUntil = Date.now() + 1500;
+        const result = deleteDiaryEntry(DIARY_ROOT, date);
+        diary = diary.filter((entry) => entry.date !== date);
+        sendJson(response, 200, result);
+      } catch (error) {
+        console.error(`Не удалось удалить заметку: ${error.message}`);
+        sendJson(response, 500, { error: 'Не удалось удалить заметку' });
+      }
+      return;
+    }
+
+    let body = '';
+    let bodyTooLarge = false;
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      if (bodyTooLarge) return;
+      body += chunk;
+      if (body.length > MAX_DIARY_CONTENT_LENGTH + 4096) bodyTooLarge = true;
+    });
+    request.on('end', () => {
+      if (bodyTooLarge) {
+        sendJson(response, 413, { error: 'Заметка слишком большая' });
+        return;
+      }
+      let content;
+      try {
+        content = JSON.parse(body).content;
+      } catch {
+        sendJson(response, 400, { error: 'Неверный JSON' });
+        return;
+      }
+      if (typeof content !== 'string') {
+        sendJson(response, 400, { error: 'Поле content должно содержать текст' });
+        return;
+      }
+      try {
+        archiveWatchSuppressedUntil = Date.now() + 1500;
+        const result = writeDiaryEntry(DIARY_ROOT, date, content);
+        diary = [...diary.filter((entry) => entry.date !== date), result]
+          .sort((a, b) => a.date.localeCompare(b.date));
+        sendJson(response, 200, result);
+      } catch (error) {
+        if (error instanceof RangeError || error instanceof TypeError) {
+          sendJson(response, 400, { error: error.message });
+          return;
+        }
+        console.error(`Не удалось сохранить заметку: ${error.message}`);
+        sendJson(response, 500, { error: 'Не удалось сохранить заметку' });
+      }
+    });
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/diary' && request.method === 'GET') {
     sendJson(response, 200, diary);
     return;
   }
