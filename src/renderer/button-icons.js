@@ -147,6 +147,11 @@
     if (!ICONS[icon]) throw new Error(`Unknown button icon: ${icon}`);
     const accessibleLabel = String(label || '').trim();
     if (!accessibleLabel) throw new Error('Icon button label is required');
+    if (!button.classList.contains('app-icon-button')) {
+      const view = button.ownerDocument?.defaultView;
+      const position = view?.getComputedStyle?.(button).position || 'static';
+      if (position === 'static') button.classList.add('app-icon-button-anchor');
+    }
     button.replaceChildren(createIcon(button.ownerDocument, icon));
     button.classList.add('app-icon-button');
     button.dataset.icon = icon;

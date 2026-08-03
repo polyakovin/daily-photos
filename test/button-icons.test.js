@@ -68,7 +68,10 @@ test('иконка кнопки синхронизирует SVG, тултип �
   };
   const button = {
     ownerDocument: document,
-    classList: { add: (...values) => values.forEach((value) => classes.add(value)) },
+    classList: {
+      add: (...values) => values.forEach((value) => classes.add(value)),
+      contains: (value) => classes.has(value)
+    },
     dataset: {},
     setAttribute: (name, value) => attributes.set(name, value),
     replaceChildren(icon) { this.icon = icon; }
@@ -81,6 +84,7 @@ test('иконка кнопки синхронизирует SVG, тултип �
   });
 
   assert.ok(classes.has('app-icon-button'));
+  assert.ok(classes.has('app-icon-button-anchor'));
   assert.ok(iconClasses.has('app-button-icon'));
   assert.ok(iconClasses.has('is-spinning'));
   assert.equal(button.dataset.icon, 'spinner');
@@ -88,4 +92,33 @@ test('иконка кнопки синхронизирует SVG, тултип �
   assert.equal(attributes.get('aria-label'), 'Сохраняем…');
   assert.equal(button.title, 'Сохраняем…');
   assert.equal(attributes.get('svg:viewBox'), '0 0 24 24');
+});
+
+test('иконка не меняет абсолютное позиционирование кнопки карточки', () => {
+  const classes = new Set();
+  const document = {
+    defaultView: { getComputedStyle: () => ({ position: 'absolute' }) },
+    createElementNS() {
+      return {
+        classList: { add() {} },
+        setAttribute() {},
+        set innerHTML(value) { this.markup = value; }
+      };
+    }
+  };
+  const button = {
+    ownerDocument: document,
+    classList: {
+      add: (...values) => values.forEach((value) => classes.add(value)),
+      contains: (value) => classes.has(value)
+    },
+    dataset: {},
+    setAttribute() {},
+    replaceChildren() {}
+  };
+
+  setIconButton(button, { icon: 'close', label: 'Закрыть карточку' });
+
+  assert.ok(classes.has('app-icon-button'));
+  assert.equal(classes.has('app-icon-button-anchor'), false);
 });

@@ -122,9 +122,9 @@ test('десктопный сервер отдаёт вспомогательн�
     assert.match(button, /<svg[\s\S]*?<\/svg>/);
   }
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=107"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=108"/);
   assert.match(appHtml, /src="\/map\.js\?v=10"/);
-  assert.match(appHtml, /src="\/button-icons\.js\?v=1"/);
+  assert.match(appHtml, /src="\/button-icons\.js\?v=2"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=8"/);
   assert.match(appHtml, /src="\/app\.js\?v=96"/);
   assert.match(appHtml, /id="aboutButton"/);
@@ -153,7 +153,6 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.geo-map-playback-route/);
   assert.match(styles, /\.geo-map-playback-preview/);
   assert.match(styles, /\.map-playback\s*\{/);
-  assert.match(styles, /#mapPhotoChoosePlace:not\(\[hidden\]\)::after/);
   assert.match(styles, /:root\[data-theme="dark"\] \.map-playback-button:not\(:disabled\)/);
   assert.match(styles, /:root\[data-theme="dark"\] \.map-add-place-button:not\(:disabled\)/);
   assert.match(styles, /\.viewer-mini-map\s*\{[^}]*opacity:\s*\.56/);
@@ -162,6 +161,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.viewer-diary-form/);
   assert.match(styles, /\.viewer-diary-input/);
   assert.match(styles, /button\.app-icon-button\[data-tooltip\]::after/);
+  assert.match(styles, /button\.app-icon-button-anchor\s*\{\s*position:\s*relative/);
+  assert.doesNotMatch(styles, /button\.app-icon-button\s*\{[^}]*position:\s*relative/);
+  assert.match(styles, /#mapPhotoChoosePlace:not\(\[hidden\]\):not\(\.app-icon-button\)::after/);
   assert.match(styles, /\.app-button-icon\.is-spinning/);
   assert.match(styles, /\.geo-map-photo-fan/);
   assert.match(
@@ -177,7 +179,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.geo-map-fan-photo:hover/);
   assert.match(styles, /opacity:\s*0[\s\S]*?translate3d\(var\(--fan-x\),\s*var\(--fan-y\),\s*0\)/);
   assert.match(styles, /#mapPointDelete/);
-  assert.match(styles, /\.map-photo-actions \[data-shortcut\]:not\(\[hidden\]\)::after/);
+  assert.match(styles, /\.map-photo-actions \[data-shortcut\]:not\(\[hidden\]\):not\(\.app-icon-button\)::after/);
   assert.match(styles, /\.map-place-picker-grid/);
   assert.match(styles, /\.map-place-picker-section/);
   assert.match(styles, /\.map-place-picker-item\.is-empty/);
