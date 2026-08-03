@@ -71,6 +71,7 @@
       button.setAttribute('aria-pressed', String(isDark));
       button.setAttribute('aria-label', action);
       button.title = action;
+      button.dataset.tooltip = action;
     }
 
     function setTheme(theme, { persist = true } = {}) {

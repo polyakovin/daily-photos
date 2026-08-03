@@ -57,6 +57,13 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(datePickerScript, /classList\.toggle\('has-photo', hasPhoto\)/);
   assert.match(datePickerScript, /new CustomEvent\('date-picker-select'/);
 
+  const buttonIconsResponse = await fetch(`${server.url}/button-icons.js`);
+  assert.equal(buttonIconsResponse.status, 200);
+  assert.match(buttonIconsResponse.headers.get('content-type'), /^text\/javascript/);
+  const buttonIconsScript = await buttonIconsResponse.text();
+  assert.match(buttonIconsScript, /installIconButtons/);
+  assert.match(buttonIconsScript, /dataset\.tooltip/);
+
   const mapResponse = await fetch(`${server.url}/map.js`);
   assert.equal(mapResponse.status, 200);
   assert.match(mapResponse.headers.get('content-type'), /^text\/javascript/);
@@ -115,10 +122,11 @@ test('десктопный сервер отдаёт вспомогательн�
     assert.match(button, /<svg[\s\S]*?<\/svg>/);
   }
   assert.equal((appHtml.match(/data-date-picker/g) || []).length, 3);
-  assert.match(appHtml, /href="\/styles\.css\?v=106"/);
+  assert.match(appHtml, /href="\/styles\.css\?v=107"/);
   assert.match(appHtml, /src="\/map\.js\?v=10"/);
-  assert.match(appHtml, /src="\/date-picker\.js\?v=7"/);
-  assert.match(appHtml, /src="\/app\.js\?v=95"/);
+  assert.match(appHtml, /src="\/button-icons\.js\?v=1"/);
+  assert.match(appHtml, /src="\/date-picker\.js\?v=8"/);
+  assert.match(appHtml, /src="\/app\.js\?v=96"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -153,7 +161,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(styles, /\.viewer-mini-map-canvas\s*\{[^}]*pointer-events:\s*none/);
   assert.match(styles, /\.viewer-diary-form/);
   assert.match(styles, /\.viewer-diary-input/);
-  assert.match(styles, /\.viewer-diary-icon-button\[data-tooltip\]::after/);
+  assert.match(styles, /button\.app-icon-button\[data-tooltip\]::after/);
+  assert.match(styles, /\.app-button-icon\.is-spinning/);
   assert.match(styles, /\.geo-map-photo-fan/);
   assert.match(
     styles,

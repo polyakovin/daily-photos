@@ -217,6 +217,24 @@
       this.grid.setAttribute('aria-describedby', `${this.id}-help`);
       this.clearButton.hidden = this.input.required;
 
+      const buttonIcons = globalThis.PhotoDayButtonIcons;
+      buttonIcons?.setIconButton(this.previousButton, {
+        icon: 'chevron-left',
+        label: 'Предыдущий месяц'
+      });
+      buttonIcons?.setIconButton(this.nextButton, {
+        icon: 'chevron-right',
+        label: 'Следующий месяц'
+      });
+      buttonIcons?.setIconButton(this.todayButton, {
+        icon: 'target',
+        label: 'Выбрать сегодня'
+      });
+      buttonIcons?.setIconButton(this.clearButton, {
+        icon: 'trash',
+        label: 'Очистить дату'
+      });
+
       const formatDescription = document.createElement('span');
       formatDescription.id = `${this.id}-format`;
       formatDescription.className = 'sr-only';

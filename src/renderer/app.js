@@ -14,6 +14,7 @@ const RECENT_PLACE_LIMIT = 20;
 const DATE_KEY_PATTERN = /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
 const { suggestCalendarImportDate } = window.PhotoDayImportDate;
+const { installIconButtons, setIconButton } = window.PhotoDayButtonIcons;
 const { createDatePicker } = window.PhotoDayDatePicker;
 const {
   buildMapPlaybackFrames,
@@ -169,7 +170,6 @@ const viewerHighlightStatus = document.querySelector('#viewerHighlightStatus');
 const viewerTrashButton = document.querySelector('#viewerTrashButton');
 const viewerTrashStatus = document.querySelector('#viewerTrashStatus');
 const viewerLocationButton = document.querySelector('#viewerLocationButton');
-const viewerLocationButtonLabel = document.querySelector('#viewerLocationButtonLabel');
 const viewerLocationEditor = document.querySelector('#viewerLocationEditor');
 const viewerLocationMapElement = document.querySelector('#viewerLocationMap');
 const viewerLocationSearch = document.querySelector('#viewerLocationSearch');
@@ -182,7 +182,6 @@ const viewerLocationRemove = document.querySelector('#viewerLocationRemove');
 const viewerLocationSave = document.querySelector('#viewerLocationSave');
 const desktopBridge = window.photoDayDesktop;
 const archiveSettingsButton = document.querySelector('#archiveSettingsButton');
-const archiveSettingsName = document.querySelector('#archiveSettingsName');
 const archiveSetupDialog = document.querySelector('#archiveSetupDialog');
 const archiveSetupKicker = document.querySelector('#archiveSetupKicker');
 const archiveSetupTitle = document.querySelector('#archiveSetupTitle');
@@ -219,6 +218,7 @@ const photoImportSummary = document.querySelector('#photoImportSummary');
 const photoImportDate = document.querySelector('#photoImportDate');
 const photoImportDateHint = document.querySelector('#photoImportDateHint');
 const photoImportError = document.querySelector('#photoImportError');
+installIconButtons(document);
 const lifeBirthDatePicker = createDatePicker(lifeBirthDateInput);
 const viewerDatePicker = createDatePicker(viewerDateInput);
 const photoImportDatePicker = createDatePicker(photoImportDate);
@@ -611,8 +611,14 @@ function showBackgroundOperation(operation) {
 function updateArchiveSettingsUi(state) {
   desktopArchiveState = state;
   const hasAvailableSource = Boolean(state?.available);
-  archiveSettingsName.textContent = hasAvailableSource ? state.name : 'Не выбран';
-  archiveSettingsButton.title = hasAvailableSource ? state.path : 'Выбрать источник фотографий';
+  const archiveLabel = hasAvailableSource
+    ? `Настройки источника «${state.name}»`
+    : 'Выбрать источник фотографий';
+  setIconButton(archiveSettingsButton, {
+    icon: 'settings',
+    label: archiveLabel,
+    tooltip: hasAvailableSource ? `${archiveLabel} · ${state.path}` : archiveLabel
+  });
   archiveSetupPath.textContent = state?.path || 'Источник пока не выбран';
   archiveSetupPath.title = state?.path || '';
   archiveRevealButton.disabled = !state?.canReveal;
@@ -722,7 +728,10 @@ async function showPhotoImportDialog(files) {
     ? `Пропущено файлов: ${skippedCount}. Их формат не поддерживается или недоступен.`
     : 'Добавить эти файлы не получится. Для HEIC/HEIF включите конвертацию в настройках папки.';
   photoImportSubmit.disabled = paths.length === 0;
-  photoImportSubmit.textContent = 'Сохранить в папку';
+  setIconButton(photoImportSubmit, {
+    icon: 'upload',
+    label: 'Сохранить фотографии в папку'
+  });
   photoImportCancel.disabled = false;
   photoImportClose.disabled = false;
   if (!photoImportDialog.open) photoImportDialog.showModal();
@@ -921,7 +930,10 @@ function setPresentationMode(active) {
   document.body.classList.toggle('presentation-mode', active);
   presentationButton.classList.toggle('is-active', active);
   presentationButton.setAttribute('aria-pressed', String(active));
-  presentationButton.title = active ? 'Выключить режим презентации' : 'Включить режим презентации';
+  setIconButton(presentationButton, {
+    icon: 'presentation',
+    label: active ? 'Выключить режим презентации' : 'Включить режим презентации'
+  });
 }
 
 function showViewerBlurStatus(message, isError = false) {
@@ -1527,10 +1539,21 @@ function setupLocationSearch({
   let requestController = null;
   const submitButton = form.querySelector(':scope > button[type="submit"]');
 
+  function syncSuggestionsButton(expanded) {
+    if (!suggestionsButton) return;
+    suggestionsButton.setAttribute('aria-expanded', String(expanded));
+    setIconButton(suggestionsButton, {
+      icon: expanded ? 'close' : 'history',
+      label: expanded
+        ? 'Скрыть недавние и популярные места'
+        : 'Показать недавние и популярные места'
+    });
+  }
+
   function hideResults() {
     resultsElement.hidden = true;
     resultsElement.dataset.content = '';
-    suggestionsButton?.setAttribute('aria-expanded', 'false');
+    syncSuggestionsButton(false);
   }
 
   function showStatus(message, isError = false) {
@@ -1541,7 +1564,7 @@ function setupLocationSearch({
     resultsElement.replaceChildren(status);
     resultsElement.dataset.content = 'search';
     resultsElement.hidden = false;
-    suggestionsButton?.setAttribute('aria-expanded', 'false');
+    syncSuggestionsButton(false);
   }
 
   function choose(result) {
@@ -1578,7 +1601,7 @@ function setupLocationSearch({
     resultsElement.replaceChildren(...buttons);
     resultsElement.dataset.content = 'search';
     resultsElement.hidden = false;
-    suggestionsButton?.setAttribute('aria-expanded', 'false');
+    syncSuggestionsButton(false);
   }
 
   function showSuggestions() {
@@ -1593,7 +1616,7 @@ function setupLocationSearch({
     resultsElement.replaceChildren(...nodes);
     resultsElement.dataset.content = 'suggestions';
     resultsElement.hidden = nodes.length === 0;
-    suggestionsButton?.setAttribute('aria-expanded', String(nodes.length > 0));
+    syncSuggestionsButton(nodes.length > 0);
   }
 
   suggestionsButton?.addEventListener('click', () => {
@@ -1853,11 +1876,10 @@ function setMapPlaybackPlaying(playing) {
   );
   clearTimeout(mapPlaybackTimer);
   mapPlaybackTimer = 0;
-  mapPlaybackPlay.textContent = mapPlaybackPlaying ? '❚❚' : '▶';
-  mapPlaybackPlay.setAttribute(
-    'aria-label',
-    mapPlaybackPlaying ? 'Приостановить анимацию' : 'Запустить анимацию'
-  );
+  setIconButton(mapPlaybackPlay, {
+    icon: mapPlaybackPlaying ? 'pause' : 'play',
+    label: mapPlaybackPlaying ? 'Приостановить анимацию' : 'Запустить анимацию'
+  });
   mapPlayback.classList.toggle('is-playing', mapPlaybackPlaying);
   if (mapPlaybackPlaying) scheduleMapPlayback();
 }
@@ -1903,7 +1925,10 @@ function startMapPlayback() {
   mapController.setHighlightedPoint(null);
   mapPlayback.hidden = false;
   mapPlaybackButton.setAttribute('aria-pressed', 'true');
-  mapPlaybackButton.textContent = 'Закрыть анимацию';
+  setIconButton(mapPlaybackButton, {
+    icon: 'close',
+    label: 'Закрыть анимацию перемещений'
+  });
   mapStageWrap.classList.add('is-playing-route');
   mapPlaybackRange.max = String(mapPlaybackFrames.length - 1);
   mapPlaybackRange.disabled = mapPlaybackFrames.length < 2;
@@ -1924,10 +1949,15 @@ function stopMapPlayback({ render = true } = {}) {
   mapPlaybackIndex = 0;
   mapPlayback.hidden = true;
   mapPlayback.classList.remove('is-playing');
-  mapPlaybackPlay.textContent = '▶';
-  mapPlaybackPlay.setAttribute('aria-label', 'Запустить анимацию');
+  setIconButton(mapPlaybackPlay, {
+    icon: 'play',
+    label: 'Запустить анимацию'
+  });
   mapPlaybackButton.setAttribute('aria-pressed', 'false');
-  mapPlaybackButton.textContent = 'Анимация';
+  setIconButton(mapPlaybackButton, {
+    icon: 'route',
+    label: 'Анимация перемещений'
+  });
   mapStageWrap.classList.remove('is-playing-route');
   mapController?.setPlaybackRoute([]);
   if (render) renderMapLocations();
@@ -1955,9 +1985,12 @@ function renderMapLocations({ fit = false } = {}) {
     || mapAssignmentSaving
     || Boolean(mapAssignmentPhotos.length)
     || mapPlaybackActive;
-  mapAssignButton.textContent = withoutLocation
-    ? `Расставить без места · ${withoutLocation.toLocaleString('ru-RU')}`
-    : 'Все фотографии на карте';
+  setIconButton(mapAssignButton, {
+    icon: 'locate',
+    label: withoutLocation
+      ? `Расставить фотографии без места: ${withoutLocation.toLocaleString('ru-RU')}`
+      : 'Все фотографии уже на карте'
+  });
   mapAddPlaceButton.disabled = mapPlaceSaving
     || Boolean(mapAssignmentPhotos.length)
     || !mapPlaceEditor.hidden
@@ -1999,7 +2032,10 @@ function startMapPlaceCreation() {
   mapPlaceCoordinates.textContent = 'Нажмите на карте или найдите адрес';
   mapPlaceError.hidden = true;
   mapPlaceSave.disabled = true;
-  mapPlaceSave.textContent = 'Сохранить место';
+  setIconButton(mapPlaceSave, {
+    icon: 'check',
+    label: 'Сохранить место'
+  });
   mapPlaceEditor.hidden = false;
   mapStageWrap.classList.add('is-adding-place');
   mapController.setSelection(null);
@@ -2030,7 +2066,10 @@ function startMapPointRename() {
   mapPlaceCoordinates.textContent = `${coordinates.latitude.toFixed(6)}, ${coordinates.longitude.toFixed(6)}`;
   mapPlaceError.hidden = true;
   mapPlaceSave.disabled = !mapPlaceName.value.trim();
-  mapPlaceSave.textContent = place ? 'Сохранить название' : 'Назвать место';
+  setIconButton(mapPlaceSave, {
+    icon: 'check',
+    label: place ? 'Сохранить название' : 'Назвать место'
+  });
   mapPlaceEditor.hidden = false;
   mapStageWrap.classList.add('is-adding-place');
   mapController.setSelection(coordinates);
@@ -2185,7 +2224,10 @@ function renderMapPhotoCard() {
   mapPhotoCard.classList.remove('is-place-only');
   mapPhotoPreview.hidden = false;
   mapPlaceAttachPhoto.hidden = !relatedPlace;
-  mapPlaceAttachPhoto.textContent = 'Привязать ещё';
+  setIconButton(mapPlaceAttachPhoto, {
+    icon: 'image-plus',
+    label: 'Привязать ещё одну фотографию'
+  });
   const fallback = photo.src;
   mapPhotoImage.src = photo.thumbnailSrc || fallback;
   mapPhotoImage.dataset.fallbackSrc = fallback;
@@ -2200,19 +2242,32 @@ function renderMapPhotoCard() {
     : photoLocationLabel(photo);
   document.querySelector('#mapPhotoPrevious').disabled = activeMapPhotos.length < 2;
   document.querySelector('#mapPhotoNext').disabled = activeMapPhotos.length < 2;
-  document.querySelector('#mapPhotoPrevious').setAttribute('aria-label', 'Предыдущая фотография');
-  document.querySelector('#mapPhotoNext').setAttribute('aria-label', 'Следующая фотография');
+  setIconButton(document.querySelector('#mapPhotoPrevious'), {
+    icon: 'chevron-left',
+    label: 'Предыдущая фотография'
+  });
+  setIconButton(document.querySelector('#mapPhotoNext'), {
+    icon: 'chevron-right',
+    label: 'Следующая фотография'
+  });
   const choosePlaceLabel = relatedPlace ? 'Сменить место' : 'Выбрать место';
   mapPhotoChoosePlace.hidden = false;
-  mapPhotoChoosePlace.textContent = choosePlaceLabel;
-  mapPhotoChoosePlace.title = `${choosePlaceLabel} (M)`;
+  setIconButton(mapPhotoChoosePlace, {
+    icon: 'places',
+    label: `${choosePlaceLabel} (M)`
+  });
   mapPhotoChoosePlace.disabled = mapPlacePickerSaving;
   mapPointRename.hidden = false;
-  mapPointRename.textContent = relatedPlace ? 'Переименовать' : 'Назвать место';
+  setIconButton(mapPointRename, {
+    icon: 'pencil',
+    label: relatedPlace ? 'Переименовать место' : 'Назвать место'
+  });
   mapPointRename.disabled = mapPlaceSaving;
   mapPointDelete.hidden = false;
-  mapPointDelete.textContent = relatedPlace ? 'Удалить место' : 'Убрать с карты';
-  mapPointDelete.title = `${mapPointDelete.textContent} (Delete / ⌫)`;
+  setIconButton(mapPointDelete, {
+    icon: relatedPlace ? 'trash' : 'map-off',
+    label: `${relatedPlace ? 'Удалить место' : 'Убрать фотографию с карты'} (Delete / ⌫)`
+  });
   mapPointDelete.disabled = mapPointDeleting;
   mapPhotoCard.hidden = false;
 }
@@ -2254,16 +2309,27 @@ function renderMapPlaceCard() {
   ].filter(Boolean).join(' · ');
   document.querySelector('#mapPhotoPrevious').disabled = activeMapPlaces.length < 2;
   document.querySelector('#mapPhotoNext').disabled = activeMapPlaces.length < 2;
-  document.querySelector('#mapPhotoPrevious').setAttribute('aria-label', 'Предыдущее место');
-  document.querySelector('#mapPhotoNext').setAttribute('aria-label', 'Следующее место');
+  setIconButton(document.querySelector('#mapPhotoPrevious'), {
+    icon: 'chevron-left',
+    label: 'Предыдущее место'
+  });
+  setIconButton(document.querySelector('#mapPhotoNext'), {
+    icon: 'chevron-right',
+    label: 'Следующее место'
+  });
   mapPhotoChoosePlace.hidden = true;
   mapPlaceAttachPhoto.hidden = false;
   mapPointRename.hidden = false;
-  mapPointRename.textContent = 'Переименовать';
+  setIconButton(mapPointRename, {
+    icon: 'pencil',
+    label: 'Переименовать место'
+  });
   mapPointRename.disabled = mapPlaceSaving;
   mapPointDelete.hidden = false;
-  mapPointDelete.textContent = 'Удалить место';
-  mapPointDelete.title = 'Удалить место (Delete / ⌫)';
+  setIconButton(mapPointDelete, {
+    icon: 'trash',
+    label: 'Удалить место (Delete / ⌫)'
+  });
   mapPointDelete.disabled = mapPointDeleting;
   mapPhotoCard.hidden = false;
 }
@@ -2549,9 +2615,12 @@ function renderMapPlacePicker() {
     'aria-expanded',
     String(!query && mapPlacePickerSuggestionsVisible)
   );
-  mapPlaceSuggestionsToggle.textContent = !query && mapPlacePickerSuggestionsVisible
-    ? 'Скрыть подсказки'
-    : 'Недавние и популярные';
+  setIconButton(mapPlaceSuggestionsToggle, {
+    icon: !query && mapPlacePickerSuggestionsVisible ? 'close' : 'history',
+    label: !query && mapPlacePickerSuggestionsVisible
+      ? 'Скрыть подсказки мест'
+      : 'Показать недавние и популярные места'
+  });
 
   if (query) {
     mapPlacePickerStatus.textContent = candidates.length > visibleCandidates.length
@@ -2697,7 +2766,10 @@ function renderMapAssignment() {
   mapAssignmentPreview.disabled = mapAssignmentSaving;
   mapAssignmentChoosePlace.disabled = mapAssignmentSaving || mapPlacePickerSaving;
   mapAssignmentSkip.hidden = mapAssignmentMode === 'single';
-  mapAssignmentDone.textContent = mapAssignmentMode === 'single' ? 'Отмена' : 'Готово';
+  setIconButton(mapAssignmentDone, {
+    icon: mapAssignmentMode === 'single' ? 'close' : 'check',
+    label: mapAssignmentMode === 'single' ? 'Отменить выбор места' : 'Завершить расстановку'
+  });
   mapController?.setSelection(null);
   mapController?.setHighlightedPoint(null);
   mapController?.setSelectionMode(true);
@@ -2808,7 +2880,10 @@ function updateViewerLocationControls(photo = activePhotos[activeIndex]) {
   const hasPhoto = Boolean(photo?.src && photo?.id);
   viewerLocationButton.hidden = !hasPhoto;
   if (!hasPhoto) return;
-  viewerLocationButtonLabel.textContent = photoHasLocation(photo) ? 'Место' : 'Добавить место';
+  setIconButton(viewerLocationButton, {
+    icon: photoHasLocation(photo) ? 'map' : 'pin-plus',
+    label: photoHasLocation(photo) ? 'Открыть место съёмки' : 'Добавить место съёмки'
+  });
   viewerLocationButton.classList.toggle('is-active', photo.locationSource === 'manual');
 }
 
@@ -2918,11 +2993,14 @@ function openViewerLocationEditor() {
     ? relatedPlace ? referencePlaceLabel(relatedPlace) : photoLocationLabel(photo)
     : 'Укажите точку на карте';
   viewerLocationRemove.disabled = photo.locationSource !== 'manual' || viewerLocationSaving;
-  viewerLocationRemove.textContent = photo.locationSource === 'manual'
-    ? 'Сбросить ручную метку'
-    : photo.locationSource === 'exif'
-      ? 'Метка из EXIF'
-      : photo.locationSource ? 'Автоматическая метка' : 'Метки нет';
+  setIconButton(viewerLocationRemove, {
+    icon: photo.locationSource === 'manual' ? 'map-off' : 'map',
+    label: photo.locationSource === 'manual'
+      ? 'Сбросить ручную метку'
+      : photo.locationSource === 'exif'
+        ? 'Метка получена из EXIF'
+        : photo.locationSource ? 'Используется автоматическая метка' : 'Метки нет'
+  });
   setViewerLocationDraft(location);
   viewerLocationSearchInput.value = '';
   viewerLocationPlaceSearch?.clear();
@@ -2949,6 +3027,10 @@ async function saveViewerLocation() {
   viewerLocationSaving = true;
   viewerLocationSave.disabled = true;
   viewerLocationRemove.disabled = true;
+  setIconButton(viewerLocationSave, {
+    icon: 'spinner',
+    label: 'Сохраняем место…'
+  });
   viewerLocationStatus.textContent = 'Сохраняем место…';
   try {
     await persistPhotoLocation(photo, viewerLocationDraft);
@@ -2958,6 +3040,10 @@ async function saveViewerLocation() {
     viewerLocationStatus.classList.add('is-error');
   } finally {
     viewerLocationSaving = false;
+    setIconButton(viewerLocationSave, {
+      icon: 'check',
+      label: 'Сохранить место'
+    });
     if (!viewerLocationEditor.hidden) {
       viewerLocationSave.disabled = !viewerLocationDraft;
       viewerLocationRemove.disabled = photo.locationSource !== 'manual';
@@ -2983,7 +3069,10 @@ async function removeViewerLocation() {
     viewerLocationTitle.textContent = location
       ? relatedPlace ? referencePlaceLabel(relatedPlace) : photoLocationLabel(updatedPhoto)
       : 'Укажите точку на карте';
-    viewerLocationRemove.textContent = location ? 'Метка из EXIF' : 'Метки нет';
+    setIconButton(viewerLocationRemove, {
+      icon: location ? 'map' : 'map-off',
+      label: location ? 'Метка получена из EXIF' : 'Метки нет'
+    });
     setViewerLocationDraft(location);
     if (location) viewerLocationMap.setCenter(location, Math.max(8, viewerLocationMap.getCenter().zoom));
   } catch (error) {
@@ -3631,7 +3720,10 @@ function startRandomShow() {
   if (randomCurrentPhoto || randomTransitioning) return;
   randomGeneration += 1;
   randomPaused = false;
-  document.querySelector('#randomToggle').textContent = 'Пауза';
+  setIconButton(document.querySelector('#randomToggle'), {
+    icon: 'pause',
+    label: 'Поставить слайд-шоу на паузу'
+  });
   showRandomPhoto(true);
 }
 
@@ -3655,7 +3747,10 @@ function stopRandomShow() {
 
 function toggleRandomPause() {
   randomPaused = !randomPaused;
-  document.querySelector('#randomToggle').textContent = randomPaused ? 'Продолжить' : 'Пауза';
+  setIconButton(document.querySelector('#randomToggle'), {
+    icon: randomPaused ? 'play' : 'pause',
+    label: randomPaused ? 'Продолжить слайд-шоу' : 'Поставить слайд-шоу на паузу'
+  });
   randomProgressBar.style.animationPlayState = randomPaused ? 'paused' : 'running';
   if (randomPaused) clearTimeout(randomTimer);
   else {
@@ -3668,7 +3763,10 @@ function showNextRandomPhoto() {
   if (randomTransitioning) return;
   clearTimeout(randomTimer);
   randomPaused = false;
-  document.querySelector('#randomToggle').textContent = 'Пауза';
+  setIconButton(document.querySelector('#randomToggle'), {
+    icon: 'pause',
+    label: 'Поставить слайд-шоу на паузу'
+  });
   showRandomPhoto();
 }
 
@@ -3676,7 +3774,10 @@ function openCurrentRandomPhoto() {
   if (!randomCurrentPhoto) return;
   randomPaused = true;
   clearTimeout(randomTimer);
-  document.querySelector('#randomToggle').textContent = 'Продолжить';
+  setIconButton(document.querySelector('#randomToggle'), {
+    icon: 'play',
+    label: 'Продолжить слайд-шоу'
+  });
   randomProgressBar.style.animationPlayState = 'paused';
   const dayPhotos = byDate.get(randomCurrentPhoto.date) || [randomCurrentPhoto];
   const index = Math.max(0, dayPhotos.findIndex((photo) => photo.src === randomCurrentPhoto.src));
@@ -3686,8 +3787,10 @@ function openCurrentRandomPhoto() {
 function updateRandomFullscreenButton() {
   const active = randomNativeFullscreenActive || randomView.classList.contains('is-fullscreen-fallback');
   const button = document.querySelector('#randomFullscreen');
-  button.textContent = active ? '↙' : '⛶';
-  button.setAttribute('aria-label', active ? 'Выйти из полноэкранного режима' : 'Включить полноэкранный режим');
+  setIconButton(button, {
+    icon: active ? 'fullscreen-exit' : 'fullscreen',
+    label: active ? 'Выйти из полноэкранного режима' : 'Включить полноэкранный режим'
+  });
 }
 
 function setRandomFullscreenFallback(active) {
@@ -3817,7 +3920,12 @@ function updateViewerTrashControl(photo = activePhotos[activeIndex]) {
   const canTrash = Boolean(desktopBridge?.trashPhoto && photo?.src && photo?.id);
   viewerTrashButton.hidden = !canTrash;
   viewerTrashButton.disabled = viewerTrashInProgress;
-  viewerTrashButton.textContent = viewerTrashInProgress ? 'Перемещаем…' : 'В Корзину';
+  setIconButton(viewerTrashButton, {
+    icon: viewerTrashInProgress ? 'spinner' : 'trash',
+    label: viewerTrashInProgress
+      ? 'Перемещаем фотографию в Корзину…'
+      : 'Переместить фотографию в Корзину'
+  });
   if (!viewerTrashInProgress) showViewerTrashStatus('');
 }
 
@@ -3849,7 +3957,10 @@ async function trashViewerPhoto() {
     viewerTrashInProgress = false;
     if (!deleted) {
       viewerTrashButton.disabled = false;
-      viewerTrashButton.textContent = 'В Корзину';
+      setIconButton(viewerTrashButton, {
+        icon: 'trash',
+        label: 'Переместить фотографию в Корзину'
+      });
       if (!viewerTrashStatus.textContent) showViewerTrashStatus('');
     }
   }
@@ -3885,8 +3996,10 @@ function updateViewerHighlightControls(photo = activePhotos[activeIndex]) {
   for (const [button, active, label] of controls) {
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-pressed', String(active));
-    button.querySelector('span').textContent = active ? '★' : '☆';
-    button.title = active ? `Снять отметку «Фото ${label}»` : `Отметить как фото ${label}`;
+    setIconButton(button, {
+      icon: 'star',
+      label: active ? `Снять отметку «Фото ${label}»` : `Отметить как фото ${label}`
+    });
   }
 }
 
@@ -4327,9 +4440,10 @@ function updateViewerDiaryControls(hasDiary, hasPhoto) {
   const label = hasDiary
     ? viewerDiaryVisible ? 'Скрыть заметку' : 'Показать заметку'
     : 'Добавить заметку';
-  viewerDiaryToggle.setAttribute('aria-label', label);
-  viewerDiaryToggle.title = label;
-  viewerDiaryToggle.dataset.tooltip = label;
+  setIconButton(viewerDiaryToggle, {
+    icon: 'note',
+    label
+  });
   viewerDiaryToggle.setAttribute('aria-expanded', String(isEditing || viewerDiaryVisible));
 }
 
@@ -4350,9 +4464,10 @@ function setViewerDiarySaving(saving) {
   viewerDiaryDelete.disabled = saving;
   const label = saving ? 'Сохраняем заметку…' : 'Сохранить заметку';
   viewerDiarySave.classList.toggle('is-saving', saving);
-  viewerDiarySave.setAttribute('aria-label', label);
-  viewerDiarySave.title = label;
-  viewerDiarySave.dataset.tooltip = label;
+  setIconButton(viewerDiarySave, {
+    icon: saving ? 'spinner' : 'check',
+    label
+  });
 }
 
 function closeViewerDiaryEditor({ showDiary = viewerDiaryWasVisible } = {}) {
@@ -5175,7 +5290,10 @@ photoImportForm.addEventListener('submit', async (event) => {
   photoImportSubmit.disabled = true;
   photoImportCancel.disabled = true;
   photoImportClose.disabled = true;
-  photoImportSubmit.textContent = 'Сохраняем…';
+  setIconButton(photoImportSubmit, {
+    icon: 'spinner',
+    label: 'Сохраняем фотографии…'
+  });
   photoImportError.hidden = true;
   let reloadAfterImport = false;
   try {
@@ -5184,14 +5302,20 @@ photoImportForm.addEventListener('submit', async (event) => {
       pendingPhotoImportPaths = [];
       photoImportError.textContent = `Фотографии сохранены, но не добавлены в календарь: ${result.warning}`;
       photoImportError.hidden = false;
-      photoImportSubmit.textContent = 'Файлы сохранены';
+      setIconButton(photoImportSubmit, {
+        icon: 'check',
+        label: 'Файлы сохранены'
+      });
     } else {
       reloadAfterImport = true;
     }
   } catch (error) {
     photoImportError.textContent = `Не удалось сохранить фотографии: ${error.message}`;
     photoImportError.hidden = false;
-    photoImportSubmit.textContent = 'Повторить';
+    setIconButton(photoImportSubmit, {
+      icon: 'retry',
+      label: 'Повторить сохранение'
+    });
   } finally {
     photoImportInProgress = false;
     photoImportDatePicker.disabled = false;
