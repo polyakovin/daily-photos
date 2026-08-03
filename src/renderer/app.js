@@ -4624,6 +4624,15 @@ async function requestViewerClose() {
   return true;
 }
 
+async function closeViewerDiaryFromOutsideClick(event) {
+  if (viewerDiary.hidden
+      || viewerDiary.contains(event.target)
+      || viewerDiaryToggle.contains(event.target)) return;
+  if (!viewerDiaryForm.hidden && !await exitViewerDiaryEditor()) return;
+  setViewerDiaryVisible(false);
+  persistNavigationState();
+}
+
 async function deleteViewerDiary() {
   const photo = activePhotos[activeIndex];
   const date = photo?.date;
@@ -5180,6 +5189,7 @@ viewerDiaryInput.addEventListener('keydown', (event) => {
   event.preventDefault();
   void exitViewerDiaryEditor();
 });
+viewerPanel.addEventListener('click', (event) => void closeViewerDiaryFromOutsideClick(event));
 viewerMonthHighlight.addEventListener('click', () => setPeriodHighlight('month'));
 viewerYearHighlight.addEventListener('click', () => setPeriodHighlight('year'));
 viewerBlurToggle.addEventListener('change', async () => {

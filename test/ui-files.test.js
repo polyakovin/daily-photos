@@ -138,7 +138,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /src="\/diary-markdown\.js\?v=1"/);
   assert.match(appHtml, /src="\/diary-editor\.js\?v=1"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=8"/);
-  assert.match(appHtml, /src="\/app\.js\?v=98"/);
+  assert.match(appHtml, /src="\/app\.js\?v=100"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -274,6 +274,8 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /saveViewerDiary\(\{ closeEditor: false, autosave: true \}\)/);
   assert.match(appScript, /function exitViewerDiaryEditor\(\)/);
   assert.match(appScript, /if \(!viewerDiaryForm\.hidden && !await exitViewerDiaryEditor\(\)\) return/);
+  assert.match(appScript, /async function closeViewerDiaryFromOutsideClick\(event\)/);
+  assert.match(appScript, /viewerPanel\.addEventListener\('click', \(event\) => void closeViewerDiaryFromOutsideClick\(event\)\)/);
   assert.match(appScript, /viewer\.addEventListener\('cancel'/);
   assert.match(appScript, /parseDiaryAutoLink\(token\)/);
   assert.match(appScript, /\/api\/diary\/\$\{encodeURIComponent\(date\)\}/);
