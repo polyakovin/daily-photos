@@ -64,6 +64,11 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(buttonIconsScript, /installIconButtons/);
   assert.match(buttonIconsScript, /dataset\.tooltip/);
 
+  const diaryMarkdownResponse = await fetch(`${server.url}/diary-markdown.js`);
+  assert.equal(diaryMarkdownResponse.status, 200);
+  assert.match(diaryMarkdownResponse.headers.get('content-type'), /^text\/javascript/);
+  assert.match(await diaryMarkdownResponse.text(), /parseDiaryAutoLink/);
+
   const mapResponse = await fetch(`${server.url}/map.js`);
   assert.equal(mapResponse.status, 200);
   assert.match(mapResponse.headers.get('content-type'), /^text\/javascript/);
@@ -125,8 +130,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /href="\/styles\.css\?v=108"/);
   assert.match(appHtml, /src="\/map\.js\?v=10"/);
   assert.match(appHtml, /src="\/button-icons\.js\?v=2"/);
+  assert.match(appHtml, /src="\/diary-markdown\.js\?v=1"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=8"/);
-  assert.match(appHtml, /src="\/app\.js\?v=96"/);
+  assert.match(appHtml, /src="\/app\.js\?v=97"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -258,6 +264,7 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /changeViewerPhotoDate/);
   assert.match(appScript, /function openViewerDiaryEditor\(\)/);
   assert.match(appScript, /function saveViewerDiary\(\)/);
+  assert.match(appScript, /parseDiaryAutoLink\(token\)/);
   assert.match(appScript, /\/api\/diary\/\$\{encodeURIComponent\(date\)\}/);
   assert.match(appScript, /function updateViewerMiniMap\(photo\)/);
   const openViewerPhotoOnMapBody = appScript.match(/function openCurrentViewerPhotoOnMap\(\) \{([\s\S]*?)\n\}/)?.[1];

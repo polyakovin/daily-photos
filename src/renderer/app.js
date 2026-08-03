@@ -15,6 +15,7 @@ const DATE_KEY_PATTERN = /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[0
 const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
 const { suggestCalendarImportDate } = window.PhotoDayImportDate;
 const { installIconButtons, setIconButton } = window.PhotoDayButtonIcons;
+const { AUTO_LINK_PATTERN, parseDiaryAutoLink } = window.PhotoDayDiaryMarkdown;
 const { createDatePicker } = window.PhotoDayDatePicker;
 const {
   buildMapPlaybackFrames,
@@ -4313,13 +4314,23 @@ function renderDiaryMarkdown(markdown) {
   let listType = '';
 
   const appendInlineMarkdown = (element, text) => {
-    const pattern = /(!?\[\[[^\]]+\]\]|\[[^\]]+\]\([^)]+\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|\*[^*]+\*|_[^_]+_)/g;
+    const pattern = new RegExp(
+      `(${AUTO_LINK_PATTERN}|!?\\[\\[[^\\]]+\\]\\]|\\[[^\\]]+\\]\\([^)]+\\)|\`[^\`]+\`|\\*\\*[^*]+\\*\\*|__[^_]+__|~~[^~]+~~|\\*[^*]+\\*|_[^_]+_)`,
+      'gi'
+    );
     let offset = 0;
     for (const match of text.matchAll(pattern)) {
       if (match.index > offset) element.append(document.createTextNode(text.slice(offset, match.index)));
       const token = match[0];
       let child;
-      if (token.startsWith('![[') || token.startsWith('[[')) {
+      const autoLink = parseDiaryAutoLink(token);
+      if (autoLink) {
+        child = document.createElement('a');
+        child.textContent = autoLink.text;
+        child.href = autoLink.href;
+        child.target = '_blank';
+        child.rel = 'noreferrer';
+      } else if (token.startsWith('![[') || token.startsWith('[[')) {
         child = document.createElement('span');
         child.className = 'diary-wikilink';
         const parts = token.replace(/^!?\[\[|\]\]$/g, '').split('|');
@@ -4347,6 +4358,7 @@ function renderDiaryMarkdown(markdown) {
         child.textContent = token.slice(1, -1);
       }
       element.append(child);
+      if (autoLink?.trailing) element.append(document.createTextNode(autoLink.trailing));
       offset = match.index + token.length;
     }
     if (offset < text.length) element.append(document.createTextNode(text.slice(offset)));
