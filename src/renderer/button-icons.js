@@ -116,7 +116,7 @@
     ['#viewerLocationSave', 'check', 'Сохранить место'],
     ['#viewerDiaryEdit', 'pencil', 'Редактировать заметку'],
     ['#viewerDiaryDelete', 'trash', 'Удалить заметку'],
-    ['#viewerDiaryCancel', 'close', 'Отменить редактирование заметки'],
+    ['#viewerDiaryCancel', 'close', 'Сохранить и закрыть заметку'],
     ['#viewerDiarySave', 'check', 'Сохранить заметку'],
     ['#viewerDateEdit', 'calendar', 'Изменить дату фотографии'],
     ['#viewerDateSave', 'move', 'Перенести фотографию на выбранную дату'],

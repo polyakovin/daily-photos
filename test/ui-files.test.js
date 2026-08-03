@@ -69,6 +69,11 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(diaryMarkdownResponse.headers.get('content-type'), /^text\/javascript/);
   assert.match(await diaryMarkdownResponse.text(), /parseDiaryAutoLink/);
 
+  const diaryEditorResponse = await fetch(`${server.url}/diary-editor.js`);
+  assert.equal(diaryEditorResponse.status, 200);
+  assert.match(diaryEditorResponse.headers.get('content-type'), /^text\/javascript/);
+  assert.match(await diaryEditorResponse.text(), /DIARY_AUTOSAVE_INTERVAL_MS = 10_000/);
+
   const mapResponse = await fetch(`${server.url}/map.js`);
   assert.equal(mapResponse.status, 200);
   assert.match(mapResponse.headers.get('content-type'), /^text\/javascript/);
@@ -131,8 +136,9 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appHtml, /src="\/map\.js\?v=10"/);
   assert.match(appHtml, /src="\/button-icons\.js\?v=2"/);
   assert.match(appHtml, /src="\/diary-markdown\.js\?v=1"/);
+  assert.match(appHtml, /src="\/diary-editor\.js\?v=1"/);
   assert.match(appHtml, /src="\/date-picker\.js\?v=8"/);
-  assert.match(appHtml, /src="\/app\.js\?v=97"/);
+  assert.match(appHtml, /src="\/app\.js\?v=98"/);
   assert.match(appHtml, /id="aboutButton"/);
   assert.match(appHtml, /id="aboutDialog"/);
   assert.match(appHtml, /id="aboutVersion"/);
@@ -263,11 +269,16 @@ test('десктопный сервер отдаёт вспомогательн�
   assert.match(appScript, /onPhotoClick:\s*openMapFanPhoto/);
   assert.match(appScript, /changeViewerPhotoDate/);
   assert.match(appScript, /function openViewerDiaryEditor\(\)/);
-  assert.match(appScript, /function saveViewerDiary\(\)/);
+  assert.match(appScript, /function saveViewerDiary\(/);
+  assert.match(appScript, /viewerDiaryAutosave\.start\(\)/);
+  assert.match(appScript, /saveViewerDiary\(\{ closeEditor: false, autosave: true \}\)/);
+  assert.match(appScript, /function exitViewerDiaryEditor\(\)/);
+  assert.match(appScript, /if \(!viewerDiaryForm\.hidden && !await exitViewerDiaryEditor\(\)\) return/);
+  assert.match(appScript, /viewer\.addEventListener\('cancel'/);
   assert.match(appScript, /parseDiaryAutoLink\(token\)/);
   assert.match(appScript, /\/api\/diary\/\$\{encodeURIComponent\(date\)\}/);
   assert.match(appScript, /function updateViewerMiniMap\(photo\)/);
-  const openViewerPhotoOnMapBody = appScript.match(/function openCurrentViewerPhotoOnMap\(\) \{([\s\S]*?)\n\}/)?.[1];
+  const openViewerPhotoOnMapBody = appScript.match(/async function openCurrentViewerPhotoOnMap\(\) \{([\s\S]*?)\n\}/)?.[1];
   assert.ok(openViewerPhotoOnMapBody);
   assert.match(openViewerPhotoOnMapBody, /normalizeMapCoordinates\(photo\)/);
   assert.match(openViewerPhotoOnMapBody, /viewer\.close\(\)/);

@@ -15,6 +15,7 @@ const DATE_KEY_PATTERN = /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[0
 const { calculateLifeRange, filterLifePhotoEntries } = window.PhotoDayLifeRange;
 const { suggestCalendarImportDate } = window.PhotoDayImportDate;
 const { installIconButtons, setIconButton } = window.PhotoDayButtonIcons;
+const { createDiaryAutosave, diaryDraftChanged } = window.PhotoDayDiaryEditor;
 const { AUTO_LINK_PATTERN, parseDiaryAutoLink } = window.PhotoDayDiaryMarkdown;
 const { createDatePicker } = window.PhotoDayDatePicker;
 const {
@@ -245,9 +246,16 @@ let activeIndex = 0;
 let viewerDiaryVisible = false;
 let viewerDiaryWasVisible = false;
 let viewerDiarySaving = false;
+let viewerDiarySavedContent = '';
+let viewerDiarySavePromise = null;
+let viewerDiaryExitPromise = null;
 let viewerDateSaving = false;
 let viewerTrashInProgress = false;
 let firstArchiveMonth = null;
+const viewerDiaryAutosave = createDiaryAutosave(() => {
+  if (viewerDiaryForm.hidden) return;
+  void saveViewerDiary({ closeEditor: false, autosave: true });
+});
 let lastArchiveMonth = null;
 let timelineRendered = false;
 let timelineImageObserver = null;
@@ -2914,10 +2922,11 @@ function updateViewerMiniMap(photo) {
   requestAnimationFrame(() => viewerMiniMapController?.scheduleRender());
 }
 
-function openCurrentViewerPhotoOnMap() {
+async function openCurrentViewerPhotoOnMap() {
   const photo = activePhotos[activeIndex];
   const location = normalizeMapCoordinates(photo);
   if (!photo?.src || !location) return;
+  if (!viewerDiaryForm.hidden && !await exitViewerDiaryEditor()) return;
 
   viewer.close();
   switchView('map');
@@ -3933,6 +3942,7 @@ function updateViewerTrashControl(photo = activePhotos[activeIndex]) {
 async function trashViewerPhoto() {
   const photo = activePhotos[activeIndex];
   if (!desktopBridge?.trashPhoto || !photo?.src || !photo.id || viewerTrashInProgress) return;
+  if (!viewerDiaryForm.hidden && !await exitViewerDiaryEditor()) return;
 
   viewerTrashInProgress = true;
   updateViewerTrashControl(photo);
@@ -4124,7 +4134,8 @@ function renderViewerAlternatives(photo) {
     check.textContent = '✓';
     check.setAttribute('aria-hidden', 'true');
     button.append(image, check);
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
+      if (!viewerDiaryForm.hidden && !await exitViewerDiaryEditor()) return;
       const archiveIndex = photos.findIndex((item) => item.id === candidate.id);
       if (archiveIndex >= 0) {
         activePhotos = photos;
@@ -4468,11 +4479,13 @@ function setViewerDiaryVisible(visible, hasDiary = viewerPanel.classList.contain
   else if (viewer.open) renderViewerAlternatives(activePhotos[activeIndex]);
 }
 
-function setViewerDiarySaving(saving) {
+function setViewerDiarySaving(saving, { lockEditor = false } = {}) {
   viewerDiarySaving = saving;
-  viewerDiaryInput.disabled = saving;
-  viewerDiarySave.disabled = saving || !viewerDiaryInput.value.trim();
-  viewerDiaryCancel.disabled = saving;
+  viewerDiaryInput.disabled = saving && lockEditor;
+  viewerDiarySave.disabled = saving
+    || !viewerDiaryInput.value.trim()
+    || !diaryDraftChanged(viewerDiaryInput.value, viewerDiarySavedContent);
+  viewerDiaryCancel.disabled = false;
   viewerDiaryDelete.disabled = saving;
   const label = saving ? 'Сохраняем заметку…' : 'Сохранить заметку';
   viewerDiarySave.classList.toggle('is-saving', saving);
@@ -4484,6 +4497,7 @@ function setViewerDiarySaving(saving) {
 
 function closeViewerDiaryEditor({ showDiary = viewerDiaryWasVisible } = {}) {
   if (viewerDiaryForm.hidden) return;
+  viewerDiaryAutosave.stop();
   viewerDiaryForm.hidden = true;
   viewerDiaryContent.hidden = false;
   viewerPanel.classList.remove('is-editing-diary');
@@ -4493,6 +4507,7 @@ function closeViewerDiaryEditor({ showDiary = viewerDiaryWasVisible } = {}) {
   const hasPhoto = !viewerPanel.classList.contains('is-diary-only');
   setViewerDiaryVisible(hasDiary && (!hasPhoto || showDiary), hasDiary, hasPhoto);
   viewerDiaryWasVisible = false;
+  viewerDiarySavedContent = '';
   viewerDiary.scrollTop = 0;
 }
 
@@ -4504,6 +4519,7 @@ function openViewerDiaryEditor() {
   const entry = diaryByDate.get(photo.date);
   viewerDiaryWasVisible = viewerDiaryVisible;
   viewerDiaryInput.value = entry?.content || '';
+  viewerDiarySavedContent = viewerDiaryInput.value;
   viewerDiaryDelete.hidden = !entry;
   viewerDiaryStatus.textContent = '';
   viewerDiaryStatus.classList.remove('is-error');
@@ -4515,46 +4531,97 @@ function openViewerDiaryEditor() {
   updateViewerDiaryControls(Boolean(entry), Boolean(photo.src));
   viewerAlternatives.hidden = true;
   setViewerDiarySaving(false);
+  viewerDiaryAutosave.start();
   viewerDiary.scrollTop = 0;
   viewerDiaryInput.focus();
 }
 
-async function saveViewerDiary() {
+async function saveViewerDiary({ closeEditor = true, autosave = false } = {}) {
+  if (viewerDiaryForm.hidden) return true;
+  if (viewerDiarySavePromise) {
+    if (autosave) return false;
+    await viewerDiarySavePromise;
+  }
+
   const photo = activePhotos[activeIndex];
   const date = photo?.date;
   const content = viewerDiaryInput.value;
-  if (!canEditViewerDiary(photo) || viewerDiarySaving) return;
+  if (!canEditViewerDiary(photo)) return false;
+  if (!diaryDraftChanged(content, viewerDiarySavedContent)) {
+    if (closeEditor) closeViewerDiaryEditor({ showDiary: true });
+    return true;
+  }
   if (!content.trim()) {
+    if (!diaryByDate.has(date)) {
+      if (closeEditor) closeViewerDiaryEditor({ showDiary: false });
+      return true;
+    }
+    if (autosave) return false;
     viewerDiaryStatus.textContent = 'Напишите заметку или нажмите «Удалить»';
     viewerDiaryStatus.classList.add('is-error');
     viewerDiaryInput.focus();
-    return;
+    return false;
   }
 
-  setViewerDiarySaving(true);
-  viewerDiaryStatus.textContent = 'Сохраняем Markdown…';
+  setViewerDiarySaving(true, { lockEditor: closeEditor });
+  viewerDiaryStatus.textContent = autosave ? 'Автосохранение…' : 'Сохраняем Markdown…';
   viewerDiaryStatus.classList.remove('is-error');
-  try {
-    const response = await fetch(`/api/diary/${encodeURIComponent(date)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content })
-    });
-    const result = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(result?.error || 'Не удалось сохранить заметку');
-    diaryByDate.set(date, result);
-    renderCalendar();
-    if (activePhotos[activeIndex]?.date === date) {
-      viewerPanel.classList.add('has-diary');
-      renderDiaryMarkdown(result.content);
-      closeViewerDiaryEditor({ showDiary: true });
+  const request = (async () => {
+    try {
+      const response = await fetch(`/api/diary/${encodeURIComponent(date)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error || 'Не удалось сохранить заметку');
+      diaryByDate.set(date, result);
+      viewerDiarySavedContent = result.content;
+      renderCalendar();
+      if (activePhotos[activeIndex]?.date === date) {
+        viewerPanel.classList.add('has-diary');
+        renderDiaryMarkdown(result.content);
+      }
+      if (!closeEditor) viewerDiaryStatus.textContent = 'Автосохранено';
+      return true;
+    } catch (error) {
+      viewerDiaryStatus.textContent = error.message;
+      viewerDiaryStatus.classList.add('is-error');
+      return false;
     }
-  } catch (error) {
-    viewerDiaryStatus.textContent = error.message;
-    viewerDiaryStatus.classList.add('is-error');
-  } finally {
+  })();
+  const trackedRequest = request.finally(() => {
+    if (viewerDiarySavePromise !== trackedRequest) return;
+    viewerDiarySavePromise = null;
     setViewerDiarySaving(false);
+  });
+  viewerDiarySavePromise = trackedRequest;
+  const saved = await trackedRequest;
+  if (!saved) return false;
+  if (closeEditor) {
+    if (diaryDraftChanged(viewerDiaryInput.value, viewerDiarySavedContent)) {
+      return saveViewerDiary({ closeEditor: true });
+    }
+    closeViewerDiaryEditor({ showDiary: true });
   }
+  return true;
+}
+
+async function exitViewerDiaryEditor() {
+  if (viewerDiaryForm.hidden) return true;
+  if (viewerDiaryExitPromise) return viewerDiaryExitPromise;
+  const exit = saveViewerDiary({ closeEditor: true });
+  const trackedExit = exit.finally(() => {
+    if (viewerDiaryExitPromise === trackedExit) viewerDiaryExitPromise = null;
+  });
+  viewerDiaryExitPromise = trackedExit;
+  return trackedExit;
+}
+
+async function requestViewerClose() {
+  if (!viewerDiaryForm.hidden && !await exitViewerDiaryEditor()) return false;
+  viewer.close();
+  return true;
 }
 
 async function deleteViewerDiary() {
@@ -4563,7 +4630,7 @@ async function deleteViewerDiary() {
   if (!date || !diaryByDate.has(date) || viewerDiarySaving) return;
   if (!window.confirm(`Удалить заметку за ${formatDate(date)}?`)) return;
 
-  setViewerDiarySaving(true);
+  setViewerDiarySaving(true, { lockEditor: true });
   viewerDiaryStatus.textContent = 'Удаляем заметку…';
   viewerDiaryStatus.classList.remove('is-error');
   try {
@@ -4586,11 +4653,11 @@ async function deleteViewerDiary() {
 }
 
 function updateViewer() {
+  if (!viewerDiaryForm.hidden) return;
   const photo = activePhotos[activeIndex];
   const date = parseDate(photo.date);
   const diary = diaryByDate.get(photo.date);
   const hasPhoto = Boolean(photo.src);
-  if (!viewerDiaryForm.hidden) closeViewerDiaryEditor();
   if (!viewerDateForm.hidden) closeViewerDateEditor();
   if (!viewerLocationEditor.hidden) closeViewerLocationEditor();
   desktopBridge?.setViewerPhotoContext?.(hasPhoto ? photo.id : null);
@@ -4639,7 +4706,8 @@ function updateViewer() {
   if (viewer.open) persistNavigationState();
 }
 
-function movePhoto(amount) {
+async function movePhoto(amount) {
+  if (!viewerDiaryForm.hidden && !await exitViewerDiaryEditor()) return;
   if (viewerDiarySaving) return;
   activeIndex = (activeIndex + amount + activePhotos.length) % activePhotos.length;
   updateViewer();
@@ -5024,6 +5092,7 @@ function handleRandomFullscreenChange() {
 document.addEventListener('fullscreenchange', handleRandomFullscreenChange);
 document.addEventListener('webkitfullscreenchange', handleRandomFullscreenChange);
 document.addEventListener('keydown', (event) => {
+  if (!viewerDiaryForm.hidden) return;
   if (event.key === 'Escape' && randomView.classList.contains('is-fullscreen-fallback')) {
     exitRandomFullscreen();
   }
@@ -5061,9 +5130,11 @@ yearSelect.addEventListener('change', () => {
 document.querySelectorAll('[data-calendar-focus]').forEach((button) => {
   button.addEventListener('click', () => setCalendarFocus(button.dataset.calendarFocus));
 });
-document.querySelectorAll('[data-close]').forEach((element) => element.addEventListener('click', () => viewer.close()));
-document.querySelector('#previousPhoto').addEventListener('click', () => movePhoto(-1));
-document.querySelector('#nextPhoto').addEventListener('click', () => movePhoto(1));
+document.querySelectorAll('[data-close]').forEach((element) => element.addEventListener('click', () => {
+  void requestViewerClose();
+}));
+document.querySelector('#previousPhoto').addEventListener('click', () => void movePhoto(-1));
+document.querySelector('#nextPhoto').addEventListener('click', () => void movePhoto(1));
 viewerDateEdit.addEventListener('click', openViewerDateEditor);
 viewerDateCancel.addEventListener('click', closeViewerDateEditor);
 viewerDateInput.addEventListener('date-picker-select', () => {
@@ -5090,26 +5161,24 @@ viewerDiaryToggle.addEventListener('click', () => {
   persistNavigationState();
 });
 viewerDiaryEdit.addEventListener('click', openViewerDiaryEditor);
-viewerDiaryCancel.addEventListener('click', () => closeViewerDiaryEditor());
+viewerDiaryCancel.addEventListener('click', () => void exitViewerDiaryEditor());
 viewerDiaryDelete.addEventListener('click', () => void deleteViewerDiary());
 viewerDiaryForm.addEventListener('submit', (event) => {
   event.preventDefault();
-  void saveViewerDiary();
+  void exitViewerDiaryEditor();
 });
 viewerDiaryInput.addEventListener('input', () => {
   viewerDiaryStatus.textContent = '';
   viewerDiaryStatus.classList.remove('is-error');
-  viewerDiarySave.disabled = viewerDiarySaving || !viewerDiaryInput.value.trim();
+  viewerDiarySave.disabled = viewerDiarySaving
+    || !viewerDiaryInput.value.trim()
+    || !diaryDraftChanged(viewerDiaryInput.value, viewerDiarySavedContent);
 });
 viewerDiaryInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-    event.preventDefault();
-    void saveViewerDiary();
-  } else if (event.key === 'Escape' && !viewerDiarySaving) {
-    event.preventDefault();
-    event.stopPropagation();
-    closeViewerDiaryEditor();
-  }
+  event.stopPropagation();
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  void exitViewerDiaryEditor();
 });
 viewerMonthHighlight.addEventListener('click', () => setPeriodHighlight('month'));
 viewerYearHighlight.addEventListener('click', () => setPeriodHighlight('year'));
@@ -5159,6 +5228,11 @@ viewerImage.addEventListener('pointerup', resetViewerPressZoom);
 viewerImage.addEventListener('pointercancel', resetViewerPressZoom);
 viewerImage.addEventListener('lostpointercapture', resetViewerPressZoom);
 viewerImage.addEventListener('dragstart', (event) => event.preventDefault());
+viewer.addEventListener('cancel', (event) => {
+  if (viewerDiaryForm.hidden) return;
+  event.preventDefault();
+  void exitViewerDiaryEditor();
+});
 viewer.addEventListener('close', () => {
   desktopBridge?.setViewerPhotoContext?.(null);
   closeViewerDiaryEditor();
@@ -5173,6 +5247,13 @@ window.addEventListener('beforeunload', () => {
 });
 document.addEventListener('keydown', (event) => {
   if (viewer.open) {
+    if (!viewerDiaryForm.hidden) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        void exitViewerDiaryEditor();
+      }
+      return;
+    }
     if (!viewerDateForm.hidden) {
       if (event.key === 'Escape') closeViewerDateEditor();
       return;
@@ -5181,8 +5262,8 @@ document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closeViewerLocationEditor();
       return;
     }
-    if (event.key === 'ArrowLeft' && activePhotos.length > 1) movePhoto(-1);
-    if (event.key === 'ArrowRight' && activePhotos.length > 1) movePhoto(1);
+    if (event.key === 'ArrowLeft' && activePhotos.length > 1) void movePhoto(-1);
+    if (event.key === 'ArrowRight' && activePhotos.length > 1) void movePhoto(1);
     return;
   }
 

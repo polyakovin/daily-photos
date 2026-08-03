@@ -75,6 +75,7 @@ const UI_FILES = new Map([
   ['/photo-import-date.js', 'photo-import-date.js'],
   ['/button-icons.js', 'button-icons.js'],
   ['/diary-markdown.js', 'diary-markdown.js'],
+  ['/diary-editor.js', 'diary-editor.js'],
   ['/date-picker.js', 'date-picker.js'],
   ['/view-state.js', 'view-state.js'],
   ['/app.js', 'app.js']
