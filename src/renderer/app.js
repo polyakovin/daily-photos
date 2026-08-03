@@ -1978,7 +1978,11 @@ function referenceMapPoints(locatedPhotos) {
 
 function mapPointCollections() {
   const locatedPhotos = photos.filter(photoHasLocation);
-  const photoPoints = locatedPhotos.map((photo) => ({ ...photo, mapPointType: 'photo' }));
+  const photoPoints = locatedPhotos.map((photo) => ({
+    ...photo,
+    mapPointType: 'photo',
+    hasDiary: diaryByDate.has(photo.date)
+  }));
   const referencePoints = referenceMapPoints(locatedPhotos);
   return { locatedPhotos, points: [...referencePoints, ...photoPoints] };
 }
@@ -4578,6 +4582,7 @@ async function saveViewerDiary({ closeEditor = true, autosave = false } = {}) {
       diaryByDate.set(date, result);
       viewerDiarySavedContent = result.content;
       renderCalendar();
+      renderMapLocations();
       if (activePhotos[activeIndex]?.date === date) {
         viewerPanel.classList.add('has-diary');
         renderDiaryMarkdown(result.content);
@@ -4648,6 +4653,7 @@ async function deleteViewerDiary() {
     if (!response.ok) throw new Error(result?.error || 'Не удалось удалить заметку');
     diaryByDate.delete(date);
     renderCalendar();
+    renderMapLocations();
     if (activePhotos[activeIndex]?.date !== date) return;
     viewerPanel.classList.remove('has-diary');
     viewerDiaryContent.replaceChildren();

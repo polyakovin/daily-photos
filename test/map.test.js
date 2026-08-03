@@ -5,6 +5,7 @@ const {
   clusterProjectedPoints,
   distinctMapPointCount,
   groupContainsMapPoint,
+  groupDiaryDateCount,
   InteractiveMap,
   linkedReferencePlaces,
   mapPlaybackDelay,
@@ -96,6 +97,17 @@ test('selected map point highlights its marker or containing cluster', () => {
   assert.equal(groupContainsMapPoint([sameCoordinates], selected), true);
   assert.equal(groupContainsMapPoint([elsewhere], selected), false);
   assert.equal(groupContainsMapPoint([selected], null), false);
+});
+
+test('map cluster counts unique diary dates', () => {
+  assert.equal(groupDiaryDateCount([
+    { id: 'first', date: '2026-06-15', mapPointType: 'photo', hasDiary: true },
+    { id: 'same-day', date: '2026-06-15', mapPointType: 'photo', hasDiary: true },
+    { id: 'second', date: '2026-06-16', mapPointType: 'photo', hasDiary: true },
+    { id: 'without-note', date: '2026-06-17', mapPointType: 'photo', hasDiary: false },
+    { id: 'place', mapPointType: 'reference', hasDiary: true }
+  ]), 2);
+  assert.equal(groupDiaryDateCount(null), 0);
 });
 
 function runMapPointerGesture({ startedOnMarker, moved }) {

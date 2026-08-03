@@ -97,6 +97,13 @@
     ));
   }
 
+  function groupDiaryDateCount(points) {
+    return new Set((Array.isArray(points) ? points : [])
+      .filter((point) => point?.mapPointType === 'photo' && point.hasDiary === true)
+      .map((point) => point.date)
+      .filter(Boolean)).size;
+  }
+
   function markerCellSize(zoom) {
     return zoom >= 13 ? 42 : zoom >= 7 ? 48 : 56;
   }
@@ -864,8 +871,9 @@
 
     renderMarkerContent(marker, group, count, stackPhotos) {
       const photoCount = group.points.filter((point) => point.mapPointType === 'photo').length;
+      const diaryDateCount = groupDiaryDateCount(group.points);
       const stackSources = stackPhotos.map((photo) => photo.thumbnailSrc || photo.src);
-      const signature = `${count}:${photoCount}:${stackSources.join('|')}`;
+      const signature = `${count}:${photoCount}:${diaryDateCount}:${stackSources.join('|')}`;
       if (marker.photoDayContentSignature === signature) return;
 
       const hitChildren = [];
@@ -911,6 +919,12 @@
         countLabel.className = 'geo-map-marker-count';
         countLabel.textContent = stackPhotos.length ? String(photoCount) : String(count);
         hitChildren.push(countLabel);
+      }
+      if (diaryDateCount) {
+        const diaryBadge = document.createElement('span');
+        diaryBadge.className = 'geo-map-diary-badge';
+        diaryBadge.setAttribute('aria-hidden', 'true');
+        hitChildren.push(diaryBadge);
       }
       marker.photoDayHit.replaceChildren(...hitChildren);
       marker.photoDayContentSignature = signature;
@@ -1028,20 +1042,22 @@
         const referenceOnly = group.points.every((point) => point.mapPointType === 'reference');
         const stackPhotos = marker.photoDayStackPhotos || photoStackPoints(group.points);
         const highlighted = groupContainsMapPoint(group.points, this.highlightedPoint);
+        const diaryDateCount = groupDiaryDateCount(group.points);
         marker.photoDayStackPhotos = stackPhotos;
-        marker.className = `geo-map-marker${count > 1 ? ' is-cluster' : ''}${referenceOnly ? ' is-reference' : ''}${stackPhotos.length ? ' has-photo-stack' : ''}${highlighted ? ' is-highlighted' : ''}`;
+        marker.className = `geo-map-marker${count > 1 ? ' is-cluster' : ''}${referenceOnly ? ' is-reference' : ''}${stackPhotos.length ? ' has-photo-stack' : ''}${diaryDateCount ? ' has-diary' : ''}${highlighted ? ' is-highlighted' : ''}`;
         marker.style.transform = `translate3d(${screen.x}px, ${screen.y}px, 0) translate(-50%, -50%)`;
         this.renderMarkerContent(marker, group, count, stackPhotos);
-        marker.photoDayHit.setAttribute(
-          'aria-label',
-          stackPhotos.length
-            ? `Фотографий в группе: ${group.points.filter((point) => point.mapPointType === 'photo').length}`
-            : count > 1
-            ? `${count} точек на карте`
-            : referenceOnly
-              ? `Открыть место ${group.points[0].name || ''}`.trim()
-              : 'Открыть фотографию'
-        );
+        const markerLabel = stackPhotos.length
+          ? `Фотографий в группе: ${group.points.filter((point) => point.mapPointType === 'photo').length}`
+          : count > 1
+          ? `${count} точек на карте`
+          : referenceOnly
+            ? `Открыть место ${group.points[0].name || ''}`.trim()
+            : 'Открыть фотографию';
+        const diaryLabel = diaryDateCount
+          ? diaryDateCount === 1 ? ', есть заметка дня' : `, заметок дня: ${diaryDateCount}`
+          : '';
+        marker.photoDayHit.setAttribute('aria-label', `${markerLabel}${diaryLabel}`);
         if (highlighted) marker.photoDayHit.setAttribute('aria-current', 'location');
         else marker.photoDayHit.removeAttribute('aria-current');
         marker.photoDayGroup = group;
@@ -1100,6 +1116,7 @@
     clusterProjectedPoints,
     distinctMapPointCount,
     groupContainsMapPoint,
+    groupDiaryDateCount,
     linkedReferencePlaces,
     mapCoordinateKey,
     mapPlaybackDelay,

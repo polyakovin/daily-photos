@@ -1560,6 +1560,40 @@ body.presentation-mode .timeline-item img.is-presentation-blurred { filter: blur
   box-shadow: 0 7px 20px rgba(13, 38, 31, .48);
 }
 .geo-map-marker-count { position: relative; z-index: 2; pointer-events: none; }
+.geo-map-diary-badge {
+  position: absolute;
+  z-index: 3;
+  top: -7px;
+  right: -7px;
+  width: 16px;
+  height: 16px;
+  display: block;
+  background: #efb84c;
+  border: 2px solid rgba(255, 253, 247, .98);
+  border-radius: 50%;
+  box-shadow: 0 3px 8px rgba(70, 46, 8, .38);
+  pointer-events: none;
+}
+.geo-map-diary-badge::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  width: 6px;
+  height: 8px;
+  background: #fffdf7;
+  border-radius: 1px;
+}
+.geo-map-diary-badge::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 5px;
+  width: 4px;
+  height: 1px;
+  background: #8a5a17;
+  box-shadow: 0 2px 0 #8a5a17;
+}
 .geo-map-photo-fan {
   position: absolute;
   z-index: 1;
