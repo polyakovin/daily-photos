@@ -45,6 +45,7 @@ import PhotoArchive, {
   type ArchiveScanProgress,
   type ArchiveViewerMetadata
 } from './modules/photo-archive';
+import { withArchiveAccessTimeout } from './src/archive-access';
 import {
   buildArchiveYears,
   buildCalendarMonth,
@@ -256,6 +257,7 @@ export default function App() {
   const [viewerMetadata, setViewerMetadata] = useState<ArchiveViewerMetadata>(EMPTY_VIEWER_METADATA);
   const [appToast, setAppToast] = useState('');
   const [presentationMode, setPresentationMode] = useState(false);
+  const archiveRequestId = useRef(0);
 
   const index = useMemo(() => buildPhotoIndex(photos, preferredPaths), [photos, preferredPaths]);
   const cells = useMemo(
@@ -430,6 +432,9 @@ export default function App() {
   }), [calendarFocus, shiftCalendar]);
 
   const scanDirectory = useCallback(async (nextDirectory: ArchiveDirectory) => {
+    const requestId = archiveRequestId.current + 1;
+    archiveRequestId.current = requestId;
+    const isCurrentRequest = () => archiveRequestId.current === requestId;
     setDirectory(nextDirectory);
     setBusy(true);
     setError('');
@@ -438,6 +443,7 @@ export default function App() {
     const incrementalPhotos: ArchivePhoto[] = [];
     let publishedPhotoCount = 0;
     const progressSubscription = PhotoArchive.addListener('onScanProgress', (progress) => {
+      if (!isCurrentRequest()) return;
       setScanProgress(progress);
       if (progress.photos.length > 0) {
         incrementalPhotos.push(...progress.photos);
@@ -455,9 +461,9 @@ export default function App() {
       }
     });
     try {
-      const metadataPromise = PhotoArchive.getViewerMetadata().catch(() => EMPTY_VIEWER_METADATA);
       const preferredPathsPromise = readPreferredPaths(nextDirectory.uri);
       const cachedPhotos = await PhotoArchive.getCachedPhotos();
+      if (!isCurrentRequest()) return false;
       hasCachedIndex = cachedPhotos !== null;
       if (cachedPhotos !== null) {
         setPhotos(cachedPhotos);
@@ -466,24 +472,37 @@ export default function App() {
       } else {
         setPhotos([]);
       }
-      const [metadata, storedPreferredPaths] = await Promise.all([
-        metadataPromise,
-        preferredPathsPromise
-      ]);
-      setViewerMetadata(normalizeViewerMetadata(metadata));
+      const storedPreferredPaths = await preferredPathsPromise;
+      if (!isCurrentRequest()) return false;
       setPreferredPaths(storedPreferredPaths);
       const nextPhotos = await PhotoArchive.listPhotos();
+      if (!isCurrentRequest()) return false;
       setPhotos(nextPhotos);
       showLatestPhotoMonth(nextPhotos, setViewMonth);
+      setBusy(false);
+      void withArchiveAccessTimeout(() => PhotoArchive.getViewerMetadata())
+        .then((metadata) => {
+          if (isCurrentRequest()) setViewerMetadata(normalizeViewerMetadata(metadata));
+        })
+        .catch((metadataError) => {
+          if (isCurrentRequest()) {
+            setError(`Фотоархив открыт, но не удалось прочитать заметки и геометки. ${errorMessage(metadataError)}`);
+          }
+        });
       return true;
     } catch (scanError) {
+      if (!isCurrentRequest()) return false;
       if (!hasCachedIndex) setPhotos([]);
-      setError(errorMessage(scanError));
+      setError(hasCachedIndex
+        ? `Показан сохранённый индекс. Не удалось обновить iCloud. ${errorMessage(scanError)}`
+        : errorMessage(scanError));
       return false;
     } finally {
       progressSubscription.remove();
-      setBusy(false);
-      setScanProgress(null);
+      if (isCurrentRequest()) {
+        setBusy(false);
+        setScanProgress(null);
+      }
     }
   }, []);
 
@@ -597,7 +616,14 @@ export default function App() {
             />
           ) : null}
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? (
+            <ArchiveAccessNotice
+              message={error}
+              onChoose={chooseDirectory}
+              onRetry={() => void scanDirectory(directory)}
+              styles={styles}
+            />
+          ) : null}
 
           <View accessibilityRole="tablist" style={styles.appModeTabs}>
             {([
@@ -1185,6 +1211,45 @@ function WelcomeState({
             ? 'В системном окне откройте iCloud Drive и выберите папку архива. Доступ сохранится между запусками.'
             : 'Используется системный Document Provider: локальная память, SD-карта и подключённые облачные сервисы.'}
         </Text>
+      </View>
+    </View>
+  );
+}
+
+function ArchiveAccessNotice({
+  message,
+  onChoose,
+  onRetry,
+  styles
+}: {
+  message: string;
+  onChoose: () => void;
+  onRetry: () => void;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View accessibilityRole="alert" style={styles.archiveAccessNotice}>
+      <Text style={styles.archiveAccessTitle}>Фотоархив сейчас недоступен</Text>
+      <Text style={styles.archiveAccessText}>{message}</Text>
+      <View style={styles.archiveAccessActions}>
+        <Pressable
+          accessibilityLabel="Повторить открытие фотоархива"
+          accessibilityRole="button"
+          onPress={onRetry}
+          style={({ pressed }) => [styles.archiveAccessButton, pressed && styles.pressed]}
+        >
+          <MobileIcon color={styles.archiveAccessButtonText.color} name="retry" size={18} />
+          <Text style={styles.archiveAccessButtonText}>Повторить</Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Выбрать другую папку фотоархива"
+          accessibilityRole="button"
+          onPress={onChoose}
+          style={({ pressed }) => [styles.archiveAccessButton, pressed && styles.pressed]}
+        >
+          <MobileIcon color={styles.archiveAccessButtonText.color} name="folder" size={18} />
+          <Text style={styles.archiveAccessButtonText}>Другая папка</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -3594,6 +3659,45 @@ function createStyles(palette: Palette) {
       color: palette.muted,
       fontSize: 13,
       lineHeight: 19
+    },
+    archiveAccessNotice: {
+      backgroundColor: palette.card,
+      borderColor: palette.danger,
+      borderRadius: 14,
+      borderWidth: 1,
+      gap: 8,
+      padding: 15
+    },
+    archiveAccessTitle: {
+      color: palette.danger,
+      fontSize: 15,
+      fontWeight: '800'
+    },
+    archiveAccessText: {
+      color: palette.muted,
+      fontSize: 13,
+      lineHeight: 19
+    },
+    archiveAccessActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: 2
+    },
+    archiveAccessButton: {
+      alignItems: 'center',
+      borderColor: palette.border,
+      borderRadius: 999,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: 6,
+      minHeight: 38,
+      paddingHorizontal: 13
+    },
+    archiveAccessButtonText: {
+      color: palette.text,
+      fontSize: 13,
+      fontWeight: '800'
     },
     centeredState: {
       alignItems: 'center',

@@ -1,4 +1,5 @@
 import CryptoKit
+import Dispatch
 import ExpoModulesCore
 import Foundation
 import ImageIO
@@ -13,6 +14,7 @@ private let previewCacheName = "photo-archive-previews"
 private let progressEventName = "onScanProgress"
 private let progressPhotoBatchSize = 25
 private let progressUpdateCount = 200
+private let archiveCoordinatorTimeout: TimeInterval = 12
 private let imageExtensions: Set<String> = [
   "avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "tif", "tiff", "webp"
 ]
@@ -26,6 +28,38 @@ private struct ScannableItem {
   let modifiedAt: Date?
   let name: String
   let url: URL
+}
+
+private final class CoordinatedReadState<Value>: @unchecked Sendable {
+  let semaphore = DispatchSemaphore(value: 0)
+  private let lock = NSLock()
+  private var operationStarted = false
+  private var operationResult: Result<Value, Error>?
+
+  var hasStarted: Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return operationStarted
+  }
+
+  var result: Result<Value, Error>? {
+    lock.lock()
+    defer { lock.unlock() }
+    return operationResult
+  }
+
+  func markStarted() {
+    lock.lock()
+    operationStarted = true
+    lock.unlock()
+  }
+
+  func finish(_ result: Result<Value, Error>) {
+    lock.lock()
+    operationResult = result
+    lock.unlock()
+    semaphore.signal()
+  }
 }
 
 private final class DirectoryPickerDelegate: NSObject, UIDocumentPickerDelegate {
@@ -293,6 +327,52 @@ public class PhotoArchiveModule: Module {
     )
   }
 
+  private func archiveCoordinatorTimeoutError() -> NSError {
+    return NSError(
+      domain: "PhotoArchive",
+      code: 4,
+      userInfo: [
+        NSLocalizedDescriptionKey:
+          "iCloud не ответил вовремя. Проверьте сеть, скачайте папку в «Файлах» и повторите."
+      ]
+    )
+  }
+
+  private func coordinatedRead<Value>(
+    _ url: URL,
+    allowsLongOperation: Bool = false,
+    operation: @escaping (URL) throws -> Value
+  ) throws -> Value {
+    let coordinator = NSFileCoordinator()
+    let intent = NSFileAccessIntent.readingIntent(with: url, options: [])
+    let queue = OperationQueue()
+    queue.maxConcurrentOperationCount = 1
+    queue.qualityOfService = .userInitiated
+    let state = CoordinatedReadState<Value>()
+
+    coordinator.coordinate(with: [intent], queue: queue) { coordinationError in
+      state.markStarted()
+      if let coordinationError {
+        state.finish(.failure(coordinationError))
+        return
+      }
+      state.finish(Result { try operation(intent.url) })
+    }
+
+    if state.semaphore.wait(timeout: .now() + archiveCoordinatorTimeout) == .timedOut {
+      if !allowsLongOperation || !state.hasStarted {
+        coordinator.cancel()
+        throw archiveCoordinatorTimeoutError()
+      }
+      state.semaphore.wait()
+    }
+
+    guard let result = state.result else {
+      throw archiveCoordinatorTimeoutError()
+    }
+    return try result.get()
+  }
+
   private func safeRelativePath(_ value: String) throws -> String {
     let normalized = value.replacingOccurrences(of: "\\", with: "/")
       .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -369,10 +449,7 @@ public class PhotoArchiveModule: Module {
   }
 
   private func readViewerMetadata(_ root: URL) throws -> [String: Any] {
-    var coordinationError: NSError?
-    var result: [String: Any] = [:]
-    NSFileCoordinator().coordinate(readingItemAt: root, options: [], error: &coordinationError) {
-      coordinatedRoot in
+    return try coordinatedRead(root) { coordinatedRoot in
       var diaries: [String: String] = [:]
       let diaryRoot = coordinatedRoot.appendingPathComponent("_diary", isDirectory: true)
       if let entries = try? FileManager.default.contentsOfDirectory(
@@ -405,15 +482,13 @@ public class PhotoArchiveModule: Module {
       let locationDocument = self.readJSON(locationURL)
       let locations = locationDocument["photos"] as? [String: Any]
         ?? (locationDocument["version"] == nil ? locationDocument : [:])
-      result = [
+      return [
         "blurDates": blurDates,
         "diaries": diaries,
         "highlights": highlights,
         "locations": locations
       ]
     }
-    if let coordinationError { throw coordinationError }
-    return result
   }
 
   private func validDate(_ value: String) -> Bool {
@@ -638,36 +713,17 @@ public class PhotoArchiveModule: Module {
       foundPhotos: 0,
       photos: []
     )
-    var coordinationError: NSError?
-    var scanResult: Result<[[String: Any]], Error>?
-    NSFileCoordinator().coordinate(
-      readingItemAt: root,
-      options: [],
-      error: &coordinationError
-    ) { coordinatedRoot in
-      scanResult = Result {
-        self.sendScanProgress(
-          phase: "counting",
-          scannedItems: 0,
-          totalItems: nil,
-          foundPhotos: 0,
-          photos: []
-        )
-        let items = self.collectScannableItems(coordinatedRoot)
-        return self.enumeratePhotos(coordinatedRoot, items: items)
-      }
-    }
-    if let coordinationError {
-      throw coordinationError
-    }
-    guard let scanResult else {
-      throw NSError(
-        domain: "PhotoArchive",
-        code: 3,
-        userInfo: [NSLocalizedDescriptionKey: "Не удалось прочитать выбранную папку iCloud"]
+    let photos = try coordinatedRead(root, allowsLongOperation: true) { coordinatedRoot in
+      self.sendScanProgress(
+        phase: "counting",
+        scannedItems: 0,
+        totalItems: nil,
+        foundPhotos: 0,
+        photos: []
       )
+      let items = self.collectScannableItems(coordinatedRoot)
+      return self.enumeratePhotos(coordinatedRoot, items: items)
     }
-    let photos = try scanResult.get()
     sendScanProgress(
       phase: "complete",
       scannedItems: lastScannedItemCount,

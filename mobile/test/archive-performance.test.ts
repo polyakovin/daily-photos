@@ -51,6 +51,35 @@ test('native archive modules persist and restore a directory-specific photo inde
   }
 });
 
+test('mobile startup restores the local index before touching iCloud metadata', () => {
+  const scanDirectorySource = appSource.slice(
+    appSource.indexOf('const scanDirectory = useCallback'),
+    appSource.indexOf('const chooseDirectory = useCallback')
+  );
+  assert.ok(
+    scanDirectorySource.indexOf('await PhotoArchive.getCachedPhotos()')
+      < scanDirectorySource.indexOf('PhotoArchive.getViewerMetadata()')
+  );
+  assert.ok(
+    scanDirectorySource.indexOf('setPhotos(nextPhotos)')
+      < scanDirectorySource.indexOf('PhotoArchive.getViewerMetadata()')
+  );
+});
+
+test('iOS cancels a file coordinator that cannot open an unavailable iCloud archive', () => {
+  assert.match(iosSource, /archiveCoordinatorTimeout/);
+  assert.match(iosSource, /NSFileAccessIntent\.readingIntent/);
+  assert.match(iosSource, /coordinator\.coordinate\(with:/);
+  assert.match(iosSource, /coordinator\.cancel\(\)/);
+  assert.match(iosSource, /iCloud не ответил вовремя/);
+});
+
+test('an unavailable archive offers retry and folder replacement actions', () => {
+  assert.match(appSource, /Повторить открытие фотоархива/);
+  assert.match(appSource, /Выбрать другую папку фотоархива/);
+  assert.match(appSource, /onRetry=\{\(\) => void scanDirectory\(directory\)\}/);
+});
+
 test('calendar previews use operating-system thumbnail APIs and a disk cache', () => {
   assert.match(iosSource, /QLThumbnailGenerator/);
   assert.match(iosSource, /\.cachesDirectory/);
