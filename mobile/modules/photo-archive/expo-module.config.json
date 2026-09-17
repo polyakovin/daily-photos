@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["PhotoArchiveModule"]
+  },
+  "android": {
+    "modules": ["ru.photoday.archive.PhotoArchiveModule"]
+  }
+}

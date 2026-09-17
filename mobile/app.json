@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Фото дня",
+    "slug": "photo-day-mobile",
+    "scheme": "photoday",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ru.photoday.calendar.mobile",
+      "infoPlist": {
+        "LSSupportsOpeningDocumentsInPlace": true
+      }
+    },
+    "android": {
+      "package": "ru.photoday.calendar.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#0c2921",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png"
+      },
+      "predictiveBackGestureEnabled": true
+    }
+  }
+}
