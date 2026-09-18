@@ -45,7 +45,7 @@ import PhotoArchive, {
   type ArchiveScanProgress,
   type ArchiveViewerMetadata
 } from './modules/photo-archive';
-import { withArchiveAccessTimeout } from './src/archive-access';
+import { archiveAccessErrorMessage, withArchiveAccessTimeout } from './src/archive-access';
 import {
   buildArchiveYears,
   buildCalendarMonth,
@@ -252,6 +252,7 @@ export default function App() {
   const [viewerSelection, setViewerSelection] = useState<ViewerSelection | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
+  const [metadataWarning, setMetadataWarning] = useState('');
   const [scanProgress, setScanProgress] = useState<ArchiveScanProgress | null>(null);
   const [preferredPaths, setPreferredPaths] = useState<Record<string, string>>({});
   const [viewerMetadata, setViewerMetadata] = useState<ArchiveViewerMetadata>(EMPTY_VIEWER_METADATA);
@@ -431,6 +432,22 @@ export default function App() {
     onPanResponderTerminate: () => undefined
   }), [calendarFocus, shiftCalendar]);
 
+  const refreshViewerMetadata = useCallback(async (requestId = archiveRequestId.current) => {
+    try {
+      const metadata = await withArchiveAccessTimeout(() => PhotoArchive.getViewerMetadata());
+      if (archiveRequestId.current !== requestId) return false;
+      setViewerMetadata(normalizeViewerMetadata(metadata));
+      setMetadataWarning('');
+      return true;
+    } catch (metadataError) {
+      if (archiveRequestId.current !== requestId) return false;
+      setMetadataWarning(
+        `Не удалось прочитать заметки и геометки. ${errorMessage(metadataError)}`
+      );
+      return false;
+    }
+  }, []);
+
   const scanDirectory = useCallback(async (nextDirectory: ArchiveDirectory) => {
     const requestId = archiveRequestId.current + 1;
     archiveRequestId.current = requestId;
@@ -438,6 +455,7 @@ export default function App() {
     setDirectory(nextDirectory);
     setBusy(true);
     setError('');
+    setMetadataWarning('');
     setScanProgress({ foundPhotos: 0, phase: 'starting', photos: [], scannedItems: 0 });
     let hasCachedIndex = false;
     const incrementalPhotos: ArchivePhoto[] = [];
@@ -480,15 +498,7 @@ export default function App() {
       setPhotos(nextPhotos);
       showLatestPhotoMonth(nextPhotos, setViewMonth);
       setBusy(false);
-      void withArchiveAccessTimeout(() => PhotoArchive.getViewerMetadata())
-        .then((metadata) => {
-          if (isCurrentRequest()) setViewerMetadata(normalizeViewerMetadata(metadata));
-        })
-        .catch((metadataError) => {
-          if (isCurrentRequest()) {
-            setError(`Фотоархив открыт, но не удалось прочитать заметки и геометки. ${errorMessage(metadataError)}`);
-          }
-        });
+      void refreshViewerMetadata(requestId);
       return true;
     } catch (scanError) {
       if (!isCurrentRequest()) return false;
@@ -504,7 +514,7 @@ export default function App() {
         setScanProgress(null);
       }
     }
-  }, []);
+  }, [refreshViewerMetadata]);
 
   useEffect(() => {
     let active = true;
@@ -622,6 +632,16 @@ export default function App() {
               onChoose={chooseDirectory}
               onRetry={() => void scanDirectory(directory)}
               styles={styles}
+            />
+          ) : null}
+
+          {metadataWarning ? (
+            <ArchiveAccessNotice
+              message={metadataWarning}
+              onChoose={chooseDirectory}
+              onRetry={() => void refreshViewerMetadata()}
+              styles={styles}
+              title="Заметки и геометки временно недоступны"
             />
           ) : null}
 
@@ -1220,16 +1240,18 @@ function ArchiveAccessNotice({
   message,
   onChoose,
   onRetry,
-  styles
+  styles,
+  title = 'Фотоархив сейчас недоступен'
 }: {
   message: string;
   onChoose: () => void;
   onRetry: () => void;
   styles: ReturnType<typeof createStyles>;
+  title?: string;
 }) {
   return (
     <View accessibilityRole="alert" style={styles.archiveAccessNotice}>
-      <Text style={styles.archiveAccessTitle}>Фотоархив сейчас недоступен</Text>
+      <Text style={styles.archiveAccessTitle}>{title}</Text>
       <Text style={styles.archiveAccessText}>{message}</Text>
       <View style={styles.archiveAccessActions}>
         <Pressable
@@ -2906,8 +2928,7 @@ function ArchiveMap({
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message;
-  return 'Не удалось прочитать выбранную папку';
+  return archiveAccessErrorMessage(error);
 }
 
 async function readPreferredPaths(directoryUri: string): Promise<Record<string, string>> {

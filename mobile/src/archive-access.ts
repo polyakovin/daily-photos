@@ -10,6 +10,20 @@ export class ArchiveAccessTimeoutError extends Error {
   }
 }
 
+export function archiveAccessErrorMessage(error: unknown): string {
+  const fallback = 'Не удалось прочитать выбранную папку';
+  const rawMessage = error instanceof Error && error.message
+    ? error.message
+    : typeof error === 'string' && error.trim()
+      ? error
+      : fallback;
+  const message = rawMessage
+    .replace(/^(?:Error:\s*)?UnexpectedException:\s*/i, '')
+    .replace(/\s+\(at ExpoModulesCore\/AsyncFunctionDefinition\.swift:\d+\)\s*$/i, '')
+    .trim();
+  return message || fallback;
+}
+
 export function withArchiveAccessTimeout<T>(
   load: () => Promise<T>,
   timeoutMs = DEFAULT_ARCHIVE_ACCESS_TIMEOUT_MS

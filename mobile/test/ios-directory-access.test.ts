@@ -20,6 +20,16 @@ test('coordinates reads from the selected iCloud directory', () => {
   assert.match(source, /self\.enumeratePhotos\(coordinatedRoot, items: items\)/);
 });
 
+test('reads lightweight viewer metadata without coordinating the entire iCloud archive', () => {
+  const metadataFunction = source.slice(
+    source.indexOf('private func readViewerMetadata'),
+    source.indexOf('private func validDate')
+  );
+  assert.doesNotMatch(metadataFunction, /coordinatedRead\(root\)/);
+  assert.match(metadataFunction, /photo_locations\.json/);
+  assert.match(metadataFunction, /period_photo_selections\.json/);
+});
+
 test('rejects a selected directory when iOS does not grant security scope', () => {
   assert.match(source, /guard url\.startAccessingSecurityScopedResource\(\) else/);
 });

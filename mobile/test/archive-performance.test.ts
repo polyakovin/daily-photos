@@ -58,12 +58,22 @@ test('mobile startup restores the local index before touching iCloud metadata', 
   );
   assert.ok(
     scanDirectorySource.indexOf('await PhotoArchive.getCachedPhotos()')
-      < scanDirectorySource.indexOf('PhotoArchive.getViewerMetadata()')
+      < scanDirectorySource.indexOf('void refreshViewerMetadata(requestId)')
   );
   assert.ok(
     scanDirectorySource.indexOf('setPhotos(nextPhotos)')
-      < scanDirectorySource.indexOf('PhotoArchive.getViewerMetadata()')
+      < scanDirectorySource.indexOf('void refreshViewerMetadata(requestId)')
   );
+});
+
+test('metadata failure is reported separately without marking the photo archive unavailable', () => {
+  const scanDirectorySource = appSource.slice(
+    appSource.indexOf('const scanDirectory = useCallback'),
+    appSource.indexOf('const chooseDirectory = useCallback')
+  );
+  assert.match(appSource, /metadataWarning/);
+  assert.match(appSource, /Заметки и геометки временно недоступны/);
+  assert.doesNotMatch(scanDirectorySource, /setError\(`Фотоархив открыт/);
 });
 
 test('iOS cancels a file coordinator that cannot open an unavailable iCloud archive', () => {

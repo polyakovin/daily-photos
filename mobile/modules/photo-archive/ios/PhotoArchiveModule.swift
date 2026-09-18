@@ -449,46 +449,44 @@ public class PhotoArchiveModule: Module {
   }
 
   private func readViewerMetadata(_ root: URL) throws -> [String: Any] {
-    return try coordinatedRead(root) { coordinatedRoot in
-      var diaries: [String: String] = [:]
-      let diaryRoot = coordinatedRoot.appendingPathComponent("_diary", isDirectory: true)
-      if let entries = try? FileManager.default.contentsOfDirectory(
-        at: diaryRoot,
-        includingPropertiesForKeys: nil,
-        options: [.skipsHiddenFiles]
-      ) {
-        for entry in entries where entry.pathExtension.lowercased() == "md" {
-          let stem = entry.deletingPathExtension().lastPathComponent
-          let date = stem.replacingOccurrences(of: ".", with: "-")
-          if self.validDate(date), let content = try? String(contentsOf: entry, encoding: .utf8) {
-            diaries[date] = content
-          }
+    var diaries: [String: String] = [:]
+    let diaryRoot = root.appendingPathComponent("_diary", isDirectory: true)
+    if let entries = try? FileManager.default.contentsOfDirectory(
+      at: diaryRoot,
+      includingPropertiesForKeys: nil,
+      options: [.skipsHiddenFiles]
+    ) {
+      for entry in entries where entry.pathExtension.lowercased() == "md" {
+        let stem = entry.deletingPathExtension().lastPathComponent
+        let date = stem.replacingOccurrences(of: ".", with: "-")
+        if self.validDate(date), let content = try? String(contentsOf: entry, encoding: .utf8) {
+          diaries[date] = content
         }
       }
-
-      let blurURL = coordinatedRoot.appendingPathComponent("presentation_blur_dates.json")
-      let blurDates = ((try? Data(contentsOf: blurURL))
-        .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String] } ?? [])
-        .filter(self.validDate)
-
-      let highlightURL = coordinatedRoot.appendingPathComponent("period_photo_selections.json")
-      let highlightDocument = self.readJSON(highlightURL)
-      let highlights: [String: Any] = [
-        "months": highlightDocument["months"] as? [String: Any] ?? [:],
-        "years": highlightDocument["years"] as? [String: Any] ?? [:]
-      ]
-
-      let locationURL = coordinatedRoot.appendingPathComponent("photo_locations.json")
-      let locationDocument = self.readJSON(locationURL)
-      let locations = locationDocument["photos"] as? [String: Any]
-        ?? (locationDocument["version"] == nil ? locationDocument : [:])
-      return [
-        "blurDates": blurDates,
-        "diaries": diaries,
-        "highlights": highlights,
-        "locations": locations
-      ]
     }
+
+    let blurURL = root.appendingPathComponent("presentation_blur_dates.json")
+    let blurDates = ((try? Data(contentsOf: blurURL))
+      .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String] } ?? [])
+      .filter(self.validDate)
+
+    let highlightURL = root.appendingPathComponent("period_photo_selections.json")
+    let highlightDocument = self.readJSON(highlightURL)
+    let highlights: [String: Any] = [
+      "months": highlightDocument["months"] as? [String: Any] ?? [:],
+      "years": highlightDocument["years"] as? [String: Any] ?? [:]
+    ]
+
+    let locationURL = root.appendingPathComponent("photo_locations.json")
+    let locationDocument = self.readJSON(locationURL)
+    let locations = locationDocument["photos"] as? [String: Any]
+      ?? (locationDocument["version"] == nil ? locationDocument : [:])
+    return [
+      "blurDates": blurDates,
+      "diaries": diaries,
+      "highlights": highlights,
+      "locations": locations
+    ]
   }
 
   private func validDate(_ value: String) -> Bool {
