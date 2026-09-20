@@ -5,6 +5,15 @@ const test = require('node:test');
 
 const projectRoot = path.join(__dirname, '..');
 
+test('лендинг указывает автора в metadata для social preview', () => {
+  const html = fs.readFileSync(path.join(projectRoot, 'index.html'), 'utf8');
+
+  assert.match(html, /<meta name="author" content="Игорь Поляков" \/>/);
+  assert.match(html, /<meta property="og:site_name" content="Игорь Поляков" \/>/);
+  assert.match(html, /<meta property="og:title" content="[^"]+ — Игорь Поляков" \/>/);
+  assert.match(html, /<meta name="twitter:title" content="[^"]+ — Игорь Поляков" \/>/);
+});
+
 test('лендинг показывает карту посещённых мест как отдельный режим', () => {
   const html = fs.readFileSync(path.join(projectRoot, 'index.html'), 'utf8');
   const styles = fs.readFileSync(path.join(projectRoot, 'docs', 'landing.css'), 'utf8');
