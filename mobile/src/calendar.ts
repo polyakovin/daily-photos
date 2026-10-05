@@ -17,12 +17,14 @@ export type PhotoIndex = {
 };
 
 export type ArchiveMonthSummary = {
+  diaryCount: number;
   month: number;
   photo?: IndexedPhoto;
   photoCount: number;
 };
 
 export type ArchiveYearSummary = {
+  diaryCount: number;
   months: ArchiveMonthSummary[];
   photo?: IndexedPhoto;
   photoCount: number;
@@ -145,29 +147,35 @@ export function buildCalendarWeek(value: Date): CalendarCell[] {
 
 export function buildArchiveYears(
   index: PhotoIndex,
-  highlights: { months?: Record<string, string>; years?: Record<string, string> } = {}
+  highlights: { months?: Record<string, string>; years?: Record<string, string> } = {},
+  diaries: Record<string, string> = {}
 ): ArchiveYearSummary[] {
   const years = new Map<number, ArchiveYearSummary>();
-  for (const date of index.dates) {
+  const dates = [...new Set([...index.dates, ...Object.keys(diaries)])].sort();
+  for (const date of dates) {
     const variants = index.byDate.get(date) || [];
-    if (variants.length === 0) continue;
+    const diaryCount = diaries[date]?.trim() ? 1 : 0;
+    if (variants.length === 0 && !diaryCount) continue;
     const parsed = dateFromKey(date);
     if (!parsed) continue;
     const year = parsed.getFullYear();
     let summary = years.get(year);
     if (!summary) {
       summary = {
-        months: Array.from({ length: 12 }, (_, month) => ({ month, photoCount: 0 })),
+        diaryCount: 0,
+        months: Array.from({ length: 12 }, (_, month) => ({ month, photoCount: 0, diaryCount: 0 })),
         photoCount: 0,
         year
       };
       years.set(year, summary);
     }
     const month = summary.months[parsed.getMonth()];
+    month.diaryCount += diaryCount;
     month.photoCount += variants.length;
-    month.photo = variants[0];
+    month.photo = variants[0] || month.photo;
+    summary.diaryCount += diaryCount;
     summary.photoCount += variants.length;
-    summary.photo = variants[0];
+    summary.photo = variants[0] || summary.photo;
   }
   for (const summary of years.values()) {
     const yearDate = highlights.years?.[String(summary.year)];

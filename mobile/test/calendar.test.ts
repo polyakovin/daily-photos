@@ -94,6 +94,33 @@ test('summarizes photos for year and years calendar modes', () => {
   assert.equal(years[0].months[7].photo?.name, 'd.jpg');
 });
 
+test('keeps standalone diary days reachable in year summaries without inventing photos', () => {
+  const index = buildPhotoIndex([
+    { name: 'a.jpg', relativePath: '2024-01-01.jpg', uri: 'file:///a.jpg' }
+  ]);
+  const years = buildArchiveYears(index, {}, {
+    '2023-08-12': 'День без фотографии',
+    '2024-01-02': 'Запись после фотографии',
+    '2024-02-31': 'Некорректная дата'
+  });
+  assert.deepEqual(years.map(({ year, photoCount, diaryCount }) => ({ year, photoCount, diaryCount })), [
+    { year: 2024, photoCount: 1, diaryCount: 1 },
+    { year: 2023, photoCount: 0, diaryCount: 1 }
+  ]);
+  assert.equal(years[0].photo?.name, 'a.jpg');
+  assert.equal(years[0].months[0].photo?.name, 'a.jpg');
+  assert.equal(years[1].photo, undefined);
+  assert.equal(years[1].months[7].diaryCount, 1);
+});
+
+test('an archive containing only text entries has a calendar year', () => {
+  const years = buildArchiveYears(buildPhotoIndex([]), {}, { '2024-08-12': 'Текст' });
+  assert.equal(years.length, 1);
+  assert.equal(years[0].year, 2024);
+  assert.equal(years[0].photoCount, 0);
+  assert.equal(years[0].diaryCount, 1);
+});
+
 test('applies preferred daily and period photos to calendar representatives', () => {
   const index = buildPhotoIndex([
     { name: 'a.jpg', relativePath: '2024-01-01 a.jpg', uri: 'file:///a.jpg' },

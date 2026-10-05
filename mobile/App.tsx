@@ -53,6 +53,7 @@ import {
   buildCalendarWeeks,
   buildPhotoIndex,
   dateFromKey,
+  dateKey,
   photosInChronologicalOrder,
   type ArchiveMonthSummary,
   type ArchiveYearSummary,
@@ -61,6 +62,7 @@ import {
   type PhotoIndex
 } from './src/calendar';
 import { calendarMoveTarget, type CalendarRangeFocus } from './src/calendar-range';
+import { saveDiaryEntry } from './src/diary';
 import { horizontalPageShift, isHorizontalSwipeIntent } from './src/gestures';
 import {
   buildArchiveMapGroups,
@@ -250,6 +252,7 @@ export default function App() {
   const [appMode, setAppMode] = useState<AppMode>('calendar');
   const [calendarFocus, setCalendarFocus] = useState<CalendarFocus>('month');
   const [viewerSelection, setViewerSelection] = useState<ViewerSelection | null>(null);
+  const [diarySelection, setDiarySelection] = useState<{ date: string; chooseDate?: boolean } | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
   const [metadataWarning, setMetadataWarning] = useState('');
@@ -268,8 +271,8 @@ export default function App() {
   const weeks = useMemo(() => buildCalendarWeeks(cells), [cells]);
   const week = useMemo(() => buildCalendarWeek(viewMonth), [viewMonth]);
   const archiveYears = useMemo(
-    () => buildArchiveYears(index, viewerMetadata.highlights),
-    [index, viewerMetadata.highlights]
+    () => buildArchiveYears(index, viewerMetadata.highlights, viewerMetadata.diaries),
+    [index, viewerMetadata.highlights, viewerMetadata.diaries]
   );
   const visibleYear = archiveYears.find((summary) => summary.year === viewMonth.getFullYear());
   const viewerPhotos = useMemo(() => photosInChronologicalOrder(index), [index]);
@@ -346,6 +349,16 @@ export default function App() {
     );
   }, [togglePresentationMode]);
 
+  const closeDiaryEditor = useCallback(() => setDiarySelection(null), []);
+  const handleDiarySaved = useCallback(({ date, content }: { date: string; content: string | null }) => {
+    setViewerMetadata((previous) => {
+      const next = normalizeViewerMetadata(previous);
+      if (content === null) delete next.diaries[date];
+      else next.diaries[date] = content;
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!directory || previewWarmupPhotos.length === 0) return;
     let active = true;
@@ -380,8 +393,8 @@ export default function App() {
   }, []);
 
   const firstPhotoDate = useMemo(
-    () => dateFromKey(index.dates[0] || ''),
-    [index.dates]
+    () => dateFromKey([...index.dates, ...Object.keys(viewerMetadata.diaries)].sort()[0] || ''),
+    [index.dates, viewerMetadata.diaries]
   );
 
   const shiftCalendar = useCallback((amount: number) => {
@@ -679,6 +692,19 @@ export default function App() {
           </View>
 
           {appMode === 'calendar' ? <>
+          <Pressable
+            accessibilityLabel="Добавить текстовую запись"
+            accessibilityRole="button"
+            disabled={Boolean(metadataWarning)}
+            onPress={() => setDiarySelection({
+              date: dateKey(viewMonth.getFullYear(), viewMonth.getMonth() + 1, viewMonth.getDate()),
+              chooseDate: true
+            })}
+            style={({ pressed }) => [styles.addDiaryButton, pressed && styles.pressed]}
+          >
+            <MobileIcon color={palette.text} name="note" size={20} />
+            <Text style={styles.addDiaryButtonText}>Добавить запись</Text>
+          </Pressable>
           <View accessibilityRole="tablist" style={styles.calendarFocus}>
             {CALENDAR_FOCUSES.map(({ focus, icon, label }) => {
               const active = calendarFocus === focus;
@@ -797,15 +823,22 @@ export default function App() {
             ) : (
               <DaysCalendar
                 cells={calendarFocus === 'week' ? [week] : weeks}
+                diaries={viewerMetadata.diaries}
                 index={index}
-                onSelectDate={(date) => setViewerSelection({ date })}
+                onEditDiary={(date) => {
+                  if (!metadataWarning) setDiarySelection({ date });
+                }}
+                onSelectDate={(date) => {
+                  if (index.byDate.has(date)) setViewerSelection({ date });
+                  else if (!metadataWarning) setDiarySelection({ date });
+                }}
                 styles={styles}
                 weekMode={calendarFocus === 'week'}
               />
             )}
           </View>
 
-          {index.dates.length === 0 ? (
+          {index.dates.length === 0 && !Object.keys(viewerMetadata.diaries).length ? (
             <View style={styles.notice}>
               <Text style={styles.noticeTitle}>В папке пока нет доступных фотографий</Text>
               <Text style={styles.noticeText}>
@@ -844,7 +877,17 @@ export default function App() {
           preferredPaths={preferredPaths}
         />
       ) : null}
-      {appToast && !viewerSelection ? <MobileToast message={appToast} /> : null}
+      {diarySelection ? (
+        <DiaryEntryModal
+          chooseDate={Boolean(diarySelection.chooseDate)}
+          diaries={viewerMetadata.diaries}
+          initialDate={diarySelection.date}
+          onClose={closeDiaryEditor}
+          onSaved={handleDiarySaved}
+          styles={styles}
+        />
+      ) : null}
+      {appToast && !viewerSelection && !diarySelection ? <MobileToast message={appToast} /> : null}
     </SafeAreaView>
     </PresentationModeContext.Provider>
   );
@@ -940,6 +983,7 @@ function ScanProgressBar({
 
 function CalendarPhoto({
   day,
+  hasDiary = false,
   label,
   photo,
   styles,
@@ -947,6 +991,7 @@ function CalendarPhoto({
   weekMode = false
 }: {
   day: number;
+  hasDiary?: boolean;
   label?: string;
   photo: IndexedPhoto;
   styles: ReturnType<typeof createStyles>;
@@ -982,19 +1027,28 @@ function CalendarPhoto({
         {label || day}
       </Text>
       {variantCount > 1 ? <Text style={styles.variantBadge}>{variantCount}</Text> : null}
+      {hasDiary ? (
+        <View style={styles.photoDiaryBadge}>
+          <MobileIcon color="#ffffff" name="note" size={14} />
+        </View>
+      ) : null}
     </ImageBackground>
   );
 }
 
 function DaysCalendar({
   cells,
+  diaries,
   index,
+  onEditDiary,
   onSelectDate,
   styles,
   weekMode
 }: {
   cells: CalendarCell[][];
+  diaries: Record<string, string>;
   index: PhotoIndex;
+  onEditDiary: (date: string) => void;
   onSelectDate: (date: string) => void;
   styles: ReturnType<typeof createStyles>;
   weekMode: boolean;
@@ -1009,16 +1063,18 @@ function DaysCalendar({
           {row.map((cell) => {
             const variants = index.byDate.get(cell.date) || [];
             const photo = variants[0];
+            const diary = diaries[cell.date];
             const parsedDate = dateFromKey(cell.date);
             const weekLabel = parsedDate
               ? capitalize(WEEK_DAY_FORMATTER.format(parsedDate))
               : cell.date;
             return (
               <Pressable
-                accessibilityLabel={dayAccessibilityLabel(cell.date, variants.length)}
-                accessibilityRole={photo ? 'button' : 'text'}
-                disabled={!photo}
+                accessibilityLabel={`${dayAccessibilityLabel(cell.date, variants.length)}${diary ? ', есть запись' : ''}${!photo ? ', открыть запись' : ''}`}
+                accessibilityRole="button"
+                disabled={!photo && !parseViewerDate(cell.date)}
                 key={cell.date}
+                onLongPress={() => onEditDiary(cell.date)}
                 onPress={() => onSelectDate(cell.date)}
                 style={({ pressed }) => [
                   styles.dayCell,
@@ -1030,6 +1086,7 @@ function DaysCalendar({
                 {photo ? (
                   <CalendarPhoto
                     day={cell.day}
+                    hasDiary={Boolean(diary)}
                     label={weekMode ? weekLabel : undefined}
                     photo={photo}
                     styles={styles}
@@ -1037,13 +1094,19 @@ function DaysCalendar({
                     weekMode={weekMode}
                   />
                 ) : (
-                  <View style={[styles.emptyDay, weekMode && styles.weekEmptyDay]}>
+                  <View style={[styles.emptyDay, weekMode && styles.weekEmptyDay, Boolean(diary) && styles.diaryDay]}>
                     <Text style={[
                       styles.emptyDayNumber,
                       weekMode && styles.weekEmptyDayNumber
                     ]}>
                       {weekMode ? weekLabel : cell.day}
                     </Text>
+                    {diary ? (
+                      <View style={styles.diaryDayPreview}>
+                        <MobileIcon color={styles.emptyDayNumber.color} name="note" size={16} />
+                        {weekMode ? <Text numberOfLines={1} style={styles.diaryPreviewText}>{diary}</Text> : null}
+                      </View>
+                    ) : null}
                   </View>
                 )}
               </Pressable>
@@ -1071,7 +1134,7 @@ function YearsCalendar({
         <PeriodPhotoCard
           accessibilityLabel={`${summary.year} год, фотографий: ${summary.photoCount}`}
           key={summary.year}
-          label="Фото года"
+          label={summary.diaryCount ? `${summary.photoCount} фото · ${summary.diaryCount} записей` : 'Фото года'}
           onPress={() => onSelectYear(summary.year)}
           photo={summary.photo}
           styles={styles}
@@ -1094,6 +1157,7 @@ function YearCalendar({
   year: number;
 }) {
   const months = summary?.months || Array.from({ length: 12 }, (_, month) => ({
+    diaryCount: 0,
     month,
     photoCount: 0
   }));
@@ -1126,7 +1190,7 @@ function MonthCard({
   return (
     <PeriodPhotoCard
       accessibilityLabel={`${MONTH_NAME_FORMATTER.format(new Date(year, month.month, 1))} ${year}, фотографий: ${month.photoCount}`}
-      label={month.photoCount ? `${month.photoCount} фото` : 'Нет фото'}
+      label={month.diaryCount ? `${month.photoCount} фото · ${month.diaryCount} записей` : month.photoCount ? `${month.photoCount} фото` : 'Нет фото'}
       onPress={onPress}
       photo={month.photo}
       styles={styles}
@@ -1274,6 +1338,195 @@ function ArchiveAccessNotice({
         </Pressable>
       </View>
     </View>
+  );
+}
+
+function DiaryEntryModal({
+  chooseDate,
+  diaries,
+  initialDate,
+  onClose,
+  onSaved,
+  styles
+}: {
+  chooseDate: boolean;
+  diaries: Record<string, string>;
+  initialDate: string;
+  onClose: () => void;
+  onSaved: (entry: { date: string; content: string | null }) => void;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const [entryDate, setEntryDate] = useState(initialDate);
+  const [dateInput, setDateInput] = useState(initialDate.split('-').reverse().join('.'));
+  const [choosingDate, setChoosingDate] = useState(chooseDate);
+  const [draft, setDraft] = useState(diaries[initialDate] || '');
+  const savedContent = useRef(diaries[initialDate] || '');
+  const saving = useRef(false);
+  const [working, setWorking] = useState(false);
+  const [status, setStatus] = useState('');
+
+  const persist = useCallback(async (close = false) => {
+    if (saving.current) return false;
+    if (choosingDate || draft === savedContent.current || (!draft.trim() && !savedContent.current)) {
+      if (close) onClose();
+      return true;
+    }
+    saving.current = true;
+    setWorking(true);
+    setStatus('Сохраняем…');
+    try {
+      const entry = await saveDiaryEntry(entryDate, draft, (date, content) => PhotoArchive.saveDiary(date, content));
+      savedContent.current = draft;
+      onSaved(entry);
+      setStatus('Запись сохранена');
+      if (close) onClose();
+      return true;
+    } catch (diaryError) {
+      setStatus(errorMessage(diaryError));
+      return false;
+    } finally {
+      saving.current = false;
+      setWorking(false);
+    }
+  }, [choosingDate, draft, entryDate, onClose, onSaved]);
+
+  useEffect(() => {
+    if (choosingDate || working || draft === savedContent.current || !draft.trim()) return;
+    const timer = setTimeout(() => void persist(), 10_000);
+    return () => clearTimeout(timer);
+  }, [choosingDate, draft, persist, working]);
+
+  const selectDate = () => {
+    const date = parseViewerDate(dateInput);
+    if (!date) {
+      setStatus('Введите корректную дату не позже сегодняшней');
+      return;
+    }
+    setEntryDate(date);
+    setDraft(diaries[date] || '');
+    savedContent.current = diaries[date] || '';
+    setChoosingDate(false);
+    setStatus('');
+  };
+
+  const confirmDelete = () => {
+    Alert.alert('Удалить запись?', `Запись за ${formatViewerDate(entryDate)} будет удалена.`, [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Удалить',
+        style: 'destructive',
+        onPress: async () => {
+          if (saving.current) return;
+          saving.current = true;
+          setWorking(true);
+          setStatus('Удаляем…');
+          try {
+            const entry = await saveDiaryEntry(entryDate, null, (date, content) => PhotoArchive.saveDiary(date, content));
+            onSaved(entry);
+            onClose();
+          } catch (diaryError) {
+            setStatus(errorMessage(diaryError));
+          } finally {
+            saving.current = false;
+            setWorking(false);
+          }
+        }
+      }
+    ]);
+  };
+
+  return (
+    <Modal animationType="slide" onRequestClose={() => void persist(true)}>
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.mainContent}>
+          <View style={styles.diaryEditor}>
+            <View style={styles.diaryEditorHeader}>
+              <Text style={styles.diaryEditorTitle}>Запись дня</Text>
+              <Pressable
+                accessibilityLabel="Сохранить и закрыть запись"
+                accessibilityRole="button"
+                disabled={working}
+                onPress={() => void persist(true)}
+                style={styles.iconButton}
+              >
+                <MobileIcon color={styles.diaryEditorTitle.color} name="close" />
+              </Pressable>
+            </View>
+            {choosingDate ? (
+              <View style={styles.diaryDateForm}>
+                <Text style={styles.diaryEditorLabel}>Дата записи</Text>
+                <TextInput
+                  accessibilityLabel="Дата записи"
+                  autoFocus
+                  onChangeText={setDateInput}
+                  onSubmitEditing={selectDate}
+                  placeholder="ДД.ММ.ГГГГ"
+                  placeholderTextColor={styles.diaryEditorLabel.color}
+                  returnKeyType="done"
+                  style={styles.diaryDateInput}
+                  value={dateInput}
+                />
+                <Pressable accessibilityRole="button" onPress={selectDate} style={styles.addDiaryButton}>
+                  <MobileIcon color={styles.addDiaryButtonText.color} name="note" />
+                  <Text style={styles.addDiaryButtonText}>Открыть запись</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <>
+                <Pressable
+                  accessibilityLabel="Выбрать другую дату записи"
+                  accessibilityRole="button"
+                  disabled={working}
+                  onPress={async () => {
+                    if (!await persist()) return;
+                    setDateInput(entryDate.split('-').reverse().join('.'));
+                    setChoosingDate(true);
+                  }}
+                  style={styles.addDiaryButton}
+                >
+                  <MobileIcon color={styles.addDiaryButtonText.color} name="calendar" size={20} />
+                  <Text style={styles.addDiaryButtonText}>{formatViewerDate(entryDate)}</Text>
+                </Pressable>
+                <Text style={styles.diaryEditorLabel}>Текст записи · Markdown</Text>
+                <TextInput
+                  accessibilityLabel="Текст записи"
+                  autoFocus
+                  editable={!working}
+                  maxLength={500_000}
+                  multiline
+                  onChangeText={(value) => {
+                    setDraft(value);
+                    setStatus('');
+                  }}
+                  placeholder="Что запомнилось в этот день?"
+                  placeholderTextColor={styles.diaryEditorLabel.color}
+                  style={styles.diaryTextInput}
+                  textAlignVertical="top"
+                  value={draft}
+                />
+                <View style={styles.diaryEditorHeader}>
+                  {diaries[entryDate] ? (
+                    <Pressable accessibilityLabel="Удалить запись" accessibilityRole="button" disabled={working} onPress={confirmDelete} style={styles.iconButton}>
+                      <MobileIcon color={styles.diaryEditorTitle.color} name="trash" />
+                    </Pressable>
+                  ) : <View />}
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={working || !draft.trim()}
+                    onPress={() => void persist(true)}
+                    style={styles.addDiaryButton}
+                  >
+                    <MobileIcon color={styles.addDiaryButtonText.color} name="check" size={20} />
+                    <Text style={styles.addDiaryButtonText}>Сохранить</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+            {status ? <Text accessibilityLiveRegion="polite" style={styles.diaryEditorLabel}>{status}</Text> : null}
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -2034,6 +2287,7 @@ function PhotoViewer({
                       active={Boolean(diary)}
                       icon="note"
                       label={diary ? 'Показать заметку' : 'Добавить заметку'}
+                      showLabel
                       onPress={() => {
                         setDiaryEditing(!diary);
                         setPanel('diary');
@@ -2501,7 +2755,8 @@ function ViewerGlassButton({
   disabled = false,
   icon,
   label,
-  onPress
+  onPress,
+  showLabel = false
 }: {
   active?: boolean;
   destructive?: boolean;
@@ -2509,6 +2764,7 @@ function ViewerGlassButton({
   icon: MobileIconName;
   label: string;
   onPress: () => void;
+  showLabel?: boolean;
 }) {
   return (
     <Pressable
@@ -2519,15 +2775,17 @@ function ViewerGlassButton({
       onPress={onPress}
       style={({ pressed }) => [
         viewerStyles.glassButtonFrame,
+        showLabel && viewerStyles.glassLabeledButtonFrame,
         pressed && viewerStyles.glassButtonPressed
       ]}
     >
       <ViewerGlassSurface
         active={active}
         destructive={destructive}
-        style={viewerStyles.glassButton}
+        style={[viewerStyles.glassButton, showLabel && viewerStyles.glassLabeledButton]}
       >
         <MobileIcon color={disabled ? '#7d8782' : '#ffffff'} name={icon} size={20} />
+        {showLabel ? <Text style={viewerStyles.glassButtonLabel}>Запись</Text> : null}
       </ViewerGlassSurface>
     </Pressable>
   );
@@ -3181,6 +3439,64 @@ function createStyles(palette: Palette) {
       fontSize: 25,
       lineHeight: 27
     },
+    addDiaryButton: {
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      borderColor: palette.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      flexDirection: 'row',
+      gap: 7,
+      minHeight: 40,
+      paddingHorizontal: 12
+    },
+    addDiaryButtonText: {
+      color: palette.text,
+      fontSize: 13,
+      fontWeight: '700'
+    },
+    diaryEditor: {
+      flex: 1,
+      gap: 12,
+      padding: 16
+    },
+    diaryEditorHeader: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'space-between'
+    },
+    diaryEditorTitle: {
+      color: palette.text,
+      fontSize: 22,
+      fontWeight: '800'
+    },
+    diaryEditorLabel: {
+      color: palette.muted,
+      fontSize: 13
+    },
+    diaryDateForm: {
+      gap: 12
+    },
+    diaryDateInput: {
+      borderColor: palette.border,
+      borderRadius: 12,
+      borderWidth: 1,
+      color: palette.text,
+      fontSize: 16,
+      minHeight: 44,
+      paddingHorizontal: 12
+    },
+    diaryTextInput: {
+      backgroundColor: palette.card,
+      borderColor: palette.border,
+      borderRadius: 12,
+      borderWidth: 1,
+      color: palette.text,
+      flex: 1,
+      fontSize: 16,
+      minHeight: 80,
+      padding: 12
+    },
     headerActions: {
       flexDirection: 'row',
       gap: 8
@@ -3566,6 +3882,28 @@ function createStyles(palette: Palette) {
       paddingHorizontal: 4,
       paddingVertical: 2,
       textAlign: 'center'
+    },
+    photoDiaryBadge: {
+      backgroundColor: 'rgba(0, 0, 0, 0.65)',
+      borderRadius: 8,
+      bottom: 5,
+      left: 5,
+      padding: 3,
+      position: 'absolute'
+    },
+    diaryDay: {
+      backgroundColor: palette.emptyCell
+    },
+    diaryDayPreview: {
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 6,
+      marginTop: 3
+    },
+    diaryPreviewText: {
+      color: palette.muted,
+      flex: 1,
+      fontSize: 12
     },
     emptyDay: {
       alignItems: 'flex-start',
@@ -4215,6 +4553,20 @@ const viewerStyles = StyleSheet.create({
     borderRadius: 22,
     height: 42,
     width: 42
+  },
+  glassLabeledButtonFrame: {
+    width: 86
+  },
+  glassLabeledButton: {
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: 8,
+    width: 86
+  },
+  glassButtonLabel: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700'
   },
   glassButtonPressed: {
     transform: [{ scale: 0.92 }]
