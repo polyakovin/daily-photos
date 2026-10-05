@@ -1,5 +1,8 @@
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const {
   archiveDestination,
   detectArchiveStyle,
@@ -16,6 +19,7 @@ const STANDARD_IMAGE_RE = /\.(?:jpe?g|png|webp|gif|avif)$/i;
 const CONVERTIBLE_IMAGE_RE = /\.(?:heic|heif)$/i;
 const DATE_KEY_RE = /^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const MAX_IMPORT_FILES = 100;
+const runConversionCommand = promisify(execFile);
 
 function isValidImportDate(value, today = new Date()) {
   if (typeof value !== 'string' || !DATE_KEY_RE.test(value)) return false;
@@ -28,12 +32,12 @@ function isValidImportDate(value, today = new Date()) {
     && candidate.getTime() <= todayStart.getTime();
 }
 
-function importableImage(filePath, allowConvertibleFormats) {
+function importableImage(filePath) {
   return STANDARD_IMAGE_RE.test(filePath)
-    || (allowConvertibleFormats && CONVERTIBLE_IMAGE_RE.test(filePath));
+    || CONVERTIBLE_IMAGE_RE.test(filePath);
 }
 
-async function validateSources(filePaths, allowConvertibleFormats) {
+async function validateSources(filePaths) {
   if (!Array.isArray(filePaths) || !filePaths.length) {
     throw new Error('Перетащите хотя бы одну фотографию');
   }
@@ -50,13 +54,43 @@ async function validateSources(filePaths, allowConvertibleFormats) {
     if (typeof sourcePath !== 'string' || !sourcePath || sourcePath.length > 4096) {
       throw new Error('Не удалось прочитать путь к фотографии');
     }
-    if (!importableImage(sourcePath, allowConvertibleFormats)) {
+    if (!importableImage(sourcePath)) {
       throw new Error(`Формат файла «${path.basename(sourcePath)}» не поддерживается`);
     }
     const stats = await fs.promises.stat(sourcePath);
     if (!stats.isFile()) throw new Error(`«${path.basename(sourcePath)}» не является файлом`);
   }
   return sources;
+}
+
+async function convertPhotoForImport(sourcePath, destinationPath, {
+  runCommand = runConversionCommand
+} = {}) {
+  const decodedPath = `${destinationPath}.png`;
+  const options = {
+    timeout: 120_000,
+    env: {
+      ...process.env,
+      PATH: ['/opt/homebrew/bin', '/usr/local/bin', process.env.PATH || ''].join(path.delimiter)
+    }
+  };
+  try {
+    await runCommand('heif-convert', [sourcePath, decodedPath], options);
+    await runCommand('cwebp', ['-quiet', '-q', '85', '-metadata', 'all', decodedPath, '-o', destinationPath], options);
+    await runCommand('exiftool', [
+      '-overwrite_original', '-TagsFromFile', sourcePath, '-all:all',
+      '-IFD0:Orientation=', '-IFD1:Orientation=', '-XMP-tiff:Orientation=',
+      '-IFD0:Orientation#=1', destinationPath
+    ], options);
+    await runCommand('webpinfo', ['-quiet', destinationPath], options);
+  } catch (error) {
+    const detail = error.code === 'ENOENT'
+      ? 'Для конвертации нужны heif-convert, cwebp, exiftool и webpinfo'
+      : String(error.stderr || error.message).trim();
+    throw new Error(`Не удалось конвертировать «${path.basename(sourcePath)}»: ${detail}`, { cause: error });
+  } finally {
+    await fs.promises.unlink(decodedPath).catch(() => {});
+  }
 }
 
 async function reservedStemsIn(directory) {
@@ -100,14 +134,14 @@ async function importPhotoFiles({
   archivePath,
   filePaths,
   date,
-  allowConvertibleFormats = false
+  convertImage = convertPhotoForImport
 } = {}) {
   if (!isValidImportDate(date)) throw new Error('Выберите корректную дату не позже сегодняшней');
 
   const archiveStats = await fs.promises.stat(archivePath);
   if (!archiveStats.isDirectory()) throw new Error('Выбранная папка фотографий недоступна');
 
-  const sources = await validateSources(filePaths, allowConvertibleFormats);
+  const sources = await validateSources(filePaths);
   const config = readPhotoImportConfig(archivePath);
   const configuredStyle = normalizeArchiveStyle(config.style);
   let style = configuredStyle;
@@ -118,8 +152,25 @@ async function importPhotoFiles({
 
   const imported = [];
   const directoryStems = new Map();
+  let temporaryRoot = '';
   try {
+    const preparedSources = [];
     for (const sourcePath of sources) {
+      let preparedPath = sourcePath;
+      if (CONVERTIBLE_IMAGE_RE.test(sourcePath)) {
+        if (!temporaryRoot) {
+          temporaryRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'photo-day-import-conversion-'));
+        }
+        preparedPath = path.join(temporaryRoot, `${preparedSources.length}.webp`);
+        await convertImage(sourcePath, preparedPath);
+        const stats = await fs.promises.stat(preparedPath);
+        if (!stats.isFile() || stats.size === 0) {
+          throw new Error(`Конвертация «${path.basename(sourcePath)}» не создала фотографию`);
+        }
+      }
+      preparedSources.push({ sourcePath, preparedPath });
+    }
+    for (const { sourcePath, preparedPath } of preparedSources) {
       const destination = archiveDestination(style, date, sourcePath);
       const destinationDirectory = path.join(archivePath, ...destination.directoryParts);
       await fs.promises.mkdir(destinationDirectory, { recursive: true });
@@ -129,7 +180,7 @@ async function importPhotoFiles({
         directoryStems.set(destinationDirectory, reservedStems);
       }
       const destinationPath = await copyWithUniqueName(
-        sourcePath,
+        preparedPath,
         destinationDirectory,
         destination.stem,
         reservedStems
@@ -151,6 +202,8 @@ async function importPhotoFiles({
       fs.promises.unlink(destinationPath).catch(() => {})
     )));
     throw error;
+  } finally {
+    if (temporaryRoot) await fs.promises.rm(temporaryRoot, { recursive: true, force: true });
   }
   return imported;
 }
@@ -159,6 +212,7 @@ module.exports = {
   CONVERTIBLE_IMAGE_RE,
   DATE_KEY_RE,
   STANDARD_IMAGE_RE,
+  convertPhotoForImport,
   importPhotoFiles,
   isValidImportDate,
   safePhotoStem

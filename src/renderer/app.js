@@ -687,8 +687,7 @@ function photoCountLabel(count) {
 }
 
 function droppedFileIsSupported(file) {
-  if (/\.(?:jpe?g|png|webp|gif|avif)$/i.test(file.name)) return true;
-  return Boolean(desktopArchiveState?.convertImages) && /\.(?:heic|heif)$/i.test(file.name);
+  return /\.(?:jpe?g|png|webp|gif|avif|heic|heif)$/i.test(file.name);
 }
 
 function resetPhotoDragState() {
@@ -727,15 +726,18 @@ async function showPhotoImportDialog(files) {
   photoImportSummary.textContent = paths.length
     ? `${photoCountLabel(paths.length)} ${paths.length === 1 ? 'будет сохранена' : 'будут сохранены'} в «${desktopArchiveState.name}».`
     : 'Не удалось найти фотографии в поддерживаемом формате.';
+  if (paths.some((filePath) => /\.(?:heic|heif)$/i.test(filePath))) {
+    photoImportSummary.textContent += ' HEIC/HEIF будут автоматически конвертированы в WebP; исходные файлы сохранятся.';
+  }
   photoImportDateHint.textContent = paths.length
     ? 'Ищем дату съёмки в EXIF…'
-    : 'Поддерживаются WebP, JPEG, PNG, GIF и AVIF.';
+    : 'Поддерживаются WebP, JPEG, PNG, GIF, AVIF и HEIC/HEIF.';
   photoImportError.hidden = skippedCount === 0 && paths.length > 0;
   photoImportError.textContent = exceedsLimit
     ? 'За один раз можно добавить не больше 100 фотографий.'
     : paths.length
     ? `Пропущено файлов: ${skippedCount}. Их формат не поддерживается или недоступен.`
-    : 'Добавить эти файлы не получится. Для HEIC/HEIF включите конвертацию в настройках папки.';
+    : 'Добавить эти файлы не получится: их формат не поддерживается или файлы недоступны.';
   photoImportSubmit.disabled = paths.length === 0;
   setIconButton(photoImportSubmit, {
     icon: 'upload',

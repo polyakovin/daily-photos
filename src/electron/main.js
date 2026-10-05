@@ -266,8 +266,7 @@ async function importDroppedPhotos(filePaths, date) {
   const imported = await importPhotoFiles({
     archivePath,
     filePaths,
-    date,
-    allowConvertibleFormats: process.platform === 'darwin' && convertImages
+    date
   });
   const indexed = await photoDayServer.reindex();
   return {
